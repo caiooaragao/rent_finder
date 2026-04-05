@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Fetches an OLX listing URL and prints JSON objects per ad:
- *   { titulo, preco, link, descricao, endereco, latitude, longitude }
+ *   { titulo, preco, link, descricao, endereco, latitude, longitude, bairro, cidade, estado, ... }
+ * — bairro/cidade/estado: atributos District/City/Region do ArcGIS (findAddressCandidates), quando há geocode
  * — latitude/longitude: ArcGIS World Geocoder (findAddressCandidates) via curl
  * — titulo / preco / link from the listing cards (same as before)
  * — descricao: each ad page, <span class="typo-body-medium" style="word-break…;white-space:break-spaces">
@@ -20,12 +21,17 @@
  *   node scrape-olx-titles.mjs --out resultados.json
  *   node scrape-olx-titles.mjs --stdout   # also print JSON to stdout
  *   node scrape-olx-titles.mjs --skip-geocode   # não chama o ArcGIS após o scrape
+ *
+ * Antes de gravar o JSON, aplica-se a camada de regras de negócio
+ * (olxScraperBusinessLayer.mjs), p.ex. deduplicação por título/descrição.
  */
 
 import { execFile } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
+
+import { runBusinessRulesPipeline } from "./olxScraperBusinessLayer.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -266,18 +272,45 @@ const ARCGIS_GEOCODE =
 const GEOCODE_DELAY_MS = 350;
 
 /**
+ * Lê atributo de texto do candidato ArcGIS (World Geocoder).
+ * @param {Record<string, unknown> | null | undefined} attrs
+ * @param {string} key
+ * @returns {string | null}
+ */
+function geocodeAttributeString(attrs, key) {
+  if (!attrs || typeof attrs !== "object") return null;
+  const v = attrs[key];
+  if (v == null || v === "") return null;
+  const s = String(v).trim();
+  return s || null;
+}
+
+/**
  * Geocodifica um endereço com ArcGIS REST (findAddressCandidates) usando curl.
- * @returns {{ latitude: number | null, longitude: number | null }}
+ * @returns {{
+ *   latitude: number | null,
+ *   longitude: number | null,
+ *   bairro: string | null,
+ *   cidade: string | null,
+ *   estado: string | null,
+ * }}
  */
 async function geocodeEnderecoViaCurl(singleLine) {
   const line = typeof singleLine === "string" ? singleLine.trim() : "";
   if (!line) {
-    return { latitude: null, longitude: null };
+    return {
+      latitude: null,
+      longitude: null,
+      bairro: null,
+      cidade: null,
+      estado: null,
+    };
   }
 
   const u = new URL(ARCGIS_GEOCODE);
   u.searchParams.set("f", "json");
   u.searchParams.set("singleLine", line);
+  u.searchParams.set("outFields", "District,City,Region");
 
   const url = u.toString();
 
@@ -310,16 +343,40 @@ async function geocodeEnderecoViaCurl(singleLine) {
 
   const candidates = data.candidates;
   if (!Array.isArray(candidates) || candidates.length === 0) {
-    return { latitude: null, longitude: null };
+    return {
+      latitude: null,
+      longitude: null,
+      bairro: null,
+      cidade: null,
+      estado: null,
+    };
   }
 
-  const loc = candidates[0].location;
+  const first = candidates[0];
+  const attrs = first.attributes;
+  const bairro = geocodeAttributeString(attrs, "District");
+  const cidade = geocodeAttributeString(attrs, "City");
+  const estado = geocodeAttributeString(attrs, "Region");
+
+  const loc = first.location;
   if (!loc || typeof loc.x !== "number" || typeof loc.y !== "number") {
-    return { latitude: 0, longitude: 0 };
+    return {
+      latitude: 0,
+      longitude: 0,
+      bairro,
+      cidade,
+      estado,
+    };
   }
 
   // ArcGIS WGS84: x = longitude, y = latitude
-  return { latitude: loc.y, longitude: loc.x };
+  return {
+    latitude: loc.y,
+    longitude: loc.x,
+    bairro,
+    cidade,
+    estado,
+  };
 }
 
 /**
@@ -460,16 +517,25 @@ async function main() {
       if (!addr) {
         ad.latitude = null;
         ad.longitude = null;
+        ad.bairro = null;
+        ad.cidade = null;
+        ad.estado = null;
         continue;
       }
       try {
-        const { latitude, longitude } = await geocodeEnderecoViaCurl(addr);
-        ad.latitude = latitude;
-        ad.longitude = longitude;
-        if (latitude != null && longitude != null) geocodeOk++;
+        const geo = await geocodeEnderecoViaCurl(addr);
+        ad.latitude = geo.latitude;
+        ad.longitude = geo.longitude;
+        ad.bairro = geo.bairro;
+        ad.cidade = geo.cidade;
+        ad.estado = geo.estado;
+        if (geo.latitude != null && geo.longitude != null) geocodeOk++;
       } catch (e) {
         ad.latitude = null;
         ad.longitude = null;
+        ad.bairro = null;
+        ad.cidade = null;
+        ad.estado = null;
         console.error(
           `  [${i + 1}/${allAds.length}] geocode falhou (${addr.slice(0, 48)}…): ${e.message || e}`
         );
@@ -483,13 +549,20 @@ async function main() {
     for (const ad of allAds) {
       ad.latitude = null;
       ad.longitude = null;
+      ad.bairro = null;
+      ad.cidade = null;
+      ad.estado = null;
     }
-    console.error("Geocoding skipped (--skip-geocode); latitude/longitude set to null.");
+    console.error(
+      "Geocoding skipped (--skip-geocode); latitude/longitude/bairro/cidade/estado set to null."
+    );
   }
 
-  const payload = JSON.stringify(allAds, null, 2);
+  const finalAds = runBusinessRulesPipeline(allAds);
+
+  const payload = JSON.stringify(finalAds, null, 2);
   await writeFile(outPath, payload, "utf8");
-  console.error(`Wrote ${allAds.length} ads to ${outPath}`);
+  console.error(`Wrote ${finalAds.length} ads to ${outPath}`);
   if (stdout) {
     console.log(payload);
   }
