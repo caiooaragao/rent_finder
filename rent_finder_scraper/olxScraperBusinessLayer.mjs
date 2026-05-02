@@ -1,6 +1,9 @@
 /**
  * Camadas de regras de negócio aplicadas ao array de anúncios antes da
  * serialização para JSON (após scrape, detalhes e geocode).
+ *
+ * As funções `*WithState` aceitam um objeto de estado externo para que a
+ * deduplicação funcione corretamente entre batches (processamento incremental).
  */
 
 /**
@@ -12,25 +15,66 @@ function normalizeForDedupe(s) {
 }
 
 /**
- * Remove duplicados: mantém a primeira ocorrência na ordem do array.
- * — Se o título normalizado já existir, o anúncio não entra no resultado.
- * — Se a descrição normalizada for não vazia e já existir, idem.
- * Título ou descrição vazios não participam da deduplicação desse campo.
+ * Remove da esquerda e da direita tudo que não for letra ou dígito Unicode
+ * (pontuação, símbolos, espaços "lixo" no início/fim).
+ * Ex.: `$Excelente locação- Algarve. ;` → `Excelente locação- Algarve`
+ */
+function stripJunkFromEdges(s) {
+  if (typeof s !== "string") return "";
+  const t = s.normalize("NFKC").trim();
+  if (!t) return "";
+  const isAlnum = (ch) => /\p{L}|\p{N}/u.test(ch);
+  let i = 0;
+  while (i < t.length && !isAlnum(t[i])) i++;
+  let j = t.length - 1;
+  while (j >= i && !isAlnum(t[j])) j--;
+  if (j < i) return "";
+  return t.slice(i, j + 1);
+}
+
+/**
+ * Chave canónica para deduplicar títulos: ignora variações só com caracteres
+ * especiais no início/fim (duplicados OLX com "lixo" no título).
+ */
+function canonicalKeyForTitulo(s) {
+  return stripJunkFromEdges(s).replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * Cria o estado partilhado de deduplicação.
+ * Passar este objeto entre batches garante que duplicados inter-batch sejam
+ * igualmente removidos.
+ *
+ * @returns {{
+ *   seenTitles: Set<string>,
+ *   tituloMantidoPorChave: Map<string, string>,
+ *   seenDescriptions: Set<string>,
+ * }}
+ */
+export function createBusinessRulesState() {
+  return {
+    seenTitles: new Set(),
+    tituloMantidoPorChave: new Map(),
+    seenDescriptions: new Set(),
+  };
+}
+
+/**
+ * Versão com estado externo — usada no modo batch para que a deduplicação
+ * persista entre batches.
  *
  * @param {Array<Record<string, unknown>>} ads
+ * @param {ReturnType<typeof createBusinessRulesState>} state
  * @returns {Array<Record<string, unknown>>}
  */
-export function layerDedupeByTitleOrDescription(ads) {
-  const seenTitles = new Set();
-  /** Título em texto original do anúncio que foi mantido (primeira ocorrência), por chave normalizada */
-  const tituloMantidoPorChave = new Map();
-  const seenDescriptions = new Set();
+export function layerDedupeByTitleOrDescriptionWithState(ads, state) {
+  const { seenTitles, tituloMantidoPorChave, seenDescriptions } = state;
   const out = [];
   let skippedByTitle = 0;
   let skippedByDesc = 0;
 
   for (const ad of ads) {
-    const t = normalizeForDedupe(ad.titulo);
+    const t = canonicalKeyForTitulo(ad.titulo);
     const d = normalizeForDedupe(ad.descricao);
 
     if (t.length > 0 && seenTitles.has(t)) {
@@ -39,7 +83,7 @@ export function layerDedupeByTitleOrDescription(ads) {
       const removido =
         typeof ad.titulo === "string" ? ad.titulo : String(ad.titulo ?? "");
       console.log(
-        `[dedupe título] Mantido: "${mantido}" | Removido: "${removido} | Link: "${ad.link}"`
+        `[dedupe título] Mantido: "${mantido}" | Removido: "${removido}" | Link: "${ad.link}"`
       );
       continue;
     }
@@ -62,11 +106,22 @@ export function layerDedupeByTitleOrDescription(ads) {
   const removed = skippedByTitle + skippedByDesc;
   if (removed > 0) {
     console.error(
-      `[camada regras de negócio] Removidos ${removed} duplicados (${skippedByTitle} por título, ${skippedByDesc} por descrição). Saída: ${out.length} anúncios.`
+      `[camada regras de negócio] Removidos ${removed} duplicados (${skippedByTitle} por título, ${skippedByDesc} por descrição). Saída do batch: ${out.length} anúncios.`
     );
   }
 
   return out;
+}
+
+/**
+ * Remove duplicados: mantém a primeira ocorrência na ordem do array.
+ * — Versão sem estado externo (uso único, sem batches).
+ *
+ * @param {Array<Record<string, unknown>>} ads
+ * @returns {Array<Record<string, unknown>>}
+ */
+export function layerDedupeByTitleOrDescription(ads) {
+  return layerDedupeByTitleOrDescriptionWithState(ads, createBusinessRulesState());
 }
 
 /** CEP brasileiro: 12345-678 ou oito dígitos seguidos (ex.: 50750510). */
@@ -93,7 +148,6 @@ function isEnderecoProvavelmenteSoBairro(endereco) {
 /**
  * Define `enderecoApenasBairro: true` quando o texto do endereço tem CEP mas não indica
  * logradouro típico (caso comum: "Bairro, Cidade, UF, CEP" → vários anúncios na mesma coordenada).
- * Não remove o campo nos outros casos (JSON fica só com `true` onde aplicável).
  *
  * @param {Array<Record<string, unknown>>} ads
  * @returns {Array<Record<string, unknown>>}
@@ -115,14 +169,25 @@ export function layerFlagEnderecoApenasBairro(ads) {
 }
 
 /**
- * Orquestra todas as camadas de negócio na ordem definida.
- * Adicionar aqui novas funções `layer…` à medida que forem necessárias.
+ * Orquestra todas as camadas de negócio usando estado externo.
+ * Use esta versão quando processar em batches para deduplicação inter-batch.
+ *
+ * @param {Array<Record<string, unknown>>} ads
+ * @param {ReturnType<typeof createBusinessRulesState>} state
+ * @returns {Array<Record<string, unknown>>}
+ */
+export function runBusinessRulesPipelineWithState(ads, state) {
+  let x = layerDedupeByTitleOrDescriptionWithState(ads, state);
+  x = layerFlagEnderecoApenasBairro(x);
+  return x;
+}
+
+/**
+ * Orquestra todas as camadas de negócio (versão sem estado externo — uso único).
  *
  * @param {Array<Record<string, unknown>>} ads
  * @returns {Array<Record<string, unknown>>}
  */
 export function runBusinessRulesPipeline(ads) {
-  let x = layerDedupeByTitleOrDescription(ads);
-  x = layerFlagEnderecoApenasBairro(x);
-  return x;
+  return runBusinessRulesPipelineWithState(ads, createBusinessRulesState());
 }

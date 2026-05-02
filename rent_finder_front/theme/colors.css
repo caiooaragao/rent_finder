@@ -1,0 +1,249 @@
+/**
+ * =============================================================================
+ * PALETA DO SISTEMA — altere apenas este ficheiro para mudar as cores da app.
+ * Tema claro: :root. Tema escuro: html.dark (next-themes, class no <html>).
+ * =============================================================================
+ */
+
+:root {
+  /* --- Página (body / Next) --- */
+  --rf-page-bg: #ffffff;
+  --rf-page-fg: #171717;
+
+  /* --- Layout (fundo geral, ex. área atrás do mapa) --- */
+  --rf-layout-canvas: #fafafa;
+
+  /* --- Marca / primária (alinhada ao MUI primary; tom teal, menos “template indigo”) --- */
+  --rf-primary-main: #0d9488;
+  --rf-primary-dark: #0f766e;
+  --rf-primary-light: #14b8a6;
+  --rf-primary-soft-bg: rgba(13, 148, 136, 0.12);
+
+  /* Silhueta da casa no logo (fundo = --rf-primary-main) */
+  --rf-logo-house-fill: #f8fafc;
+
+  /* --- MUI secundária e texto --- */
+  --rf-secondary-main: #64748b;
+  --rf-text-primary: #0f172a;
+  --rf-text-secondary: #64748b;
+
+  /* --- Superfícies MUI --- */
+  --rf-surface-paper: #ffffff;
+  --rf-surface-default: #fafafa;
+
+  /* --- Componentes MUI --- */
+  --rf-switch-track: #e2e8f0;
+
+  /* --- Texto em listas / popups OLX (Tailwind @theme → utilitários) --- */
+  --rf-listing-price: #047857;
+  --rf-listing-muted: #52525b;
+  --rf-listing-amber: #d97706;
+  --rf-link: #2563eb;
+  --rf-listing-caption: #71717a;
+
+  /* --- Sidebar --- */
+  --rf-sidebar-bg: #ffffff;
+  --rf-sidebar-fg: #000000;
+  --rf-sidebar-hover: rgba(13, 148, 136, 0.08);
+  --rf-sidebar-search-bg: #f9fafb;
+
+  /* --- Barra de busca (dropdown / input) --- */
+  --rf-search-dropdown-bg: rgba(255, 255, 255, 0.86);
+  --rf-search-dropdown-border: rgba(15, 23, 42, 0.08);
+  --rf-search-input-bg: #ffffff;
+
+  /* Botões “Buscando por” (escopo da busca) */
+  --rf-search-scope-hover-border: rgba(13, 148, 136, 0.38);
+  --rf-search-scope-selected-hover-bg: rgba(13, 148, 136, 0.2);
+
+  /* --- Sombras --- */
+  --rf-shadow-tooltip: 0 1px 4px rgba(0, 0, 0, 0.12);
+  --rf-shadow-dropdown: 0 10px 40px rgba(15, 23, 42, 0.12),
+    0 0 1px rgba(15, 23, 42, 0.08);
+  --rf-shadow-cluster-marker: 0 2px 8px rgba(0, 0, 0, 0.35);
+
+  /* --- Leaflet: tooltips de preço nos pins --- */
+  --rf-tooltip-default-bg: rgba(255, 255, 255, 0.96);
+  --rf-tooltip-default-fg: var(--rf-listing-price);
+  --rf-tooltip-default-border: #d4d4d8;
+
+  --rf-tooltip-bairro-bg: rgba(255, 251, 235, 0.98);
+  --rf-tooltip-bairro-fg: #b45309;
+  --rf-tooltip-bairro-border: #fcd34d;
+
+  /* --- Mapa: marcador de várias unidades na mesma coordenada (CoincidentGroupMarker) --- */
+  /* Alinhado ao teal primário do tema (mesmo do supercluster) para coerência visual. */
+  --rf-coincident-group-bg: var(--rf-cluster-marker-bg);
+  --rf-coincident-group-fg: var(--rf-cluster-marker-fg);
+  --rf-coincident-group-border: var(--rf-primary-main);
+  --rf-coincident-group-icon-fg: #5eead4;
+  --rf-coincident-group-pulse-min: var(--rf-cluster-marker-pulse-ring-min);
+  --rf-coincident-group-pulse-max: var(--rf-cluster-marker-pulse-ring-max);
+
+  /* --- Supercluster --- */
+  --rf-cluster-marker-bg: #0f766e;
+  --rf-cluster-marker-fg: #ffffff;
+  --rf-cluster-marker-border: #ffffff;
+  --rf-tooltip-cluster-bg: var(--rf-cluster-marker-bg);
+  --rf-tooltip-cluster-fg: var(--rf-cluster-marker-fg);
+  --rf-tooltip-cluster-border: #0d9488;
+
+  /* --- Mapa: polígonos bairro/cidade --- */
+  --rf-map-place-fill: #0f766e;
+  --rf-map-place-fill-opacity: 0.32;
+
+  /* --- Mapa: halo circular no hover do pin --- */
+  --rf-map-pin-hover-stroke: #0d9488;
+  --rf-map-pin-hover-fill: #14b8a6;
+  --rf-pin-hover-circle-fill: rgba(13, 148, 136, 0.14);
+  --rf-pin-hover-circle-stroke: rgba(13, 116, 110, 0.88);
+  --rf-pin-hover-circle-stroke-width: 2px;
+
+  /* --- Leaflet: popups (cluster + pin) — sobrescreve fundo branco do leaflet.css --- */
+  --rf-popup-bg: var(--rf-surface-paper);
+  --rf-popup-border: rgba(15, 23, 42, 0.12);
+  --rf-popup-shadow: var(--rf-shadow-dropdown);
+  --rf-popup-close: #71717a;
+  --rf-popup-close-hover: #171717;
+
+  /* Popup cluster OLX (lista + rodapé) — contraste via tokens */
+  --rf-cluster-popup-row-hover: rgba(15, 23, 42, 0.06);
+  --rf-cluster-popup-link: var(--rf-link);
+  --rf-cluster-popup-link-hover: var(--rf-primary-dark);
+  --rf-cluster-popup-muted: var(--rf-listing-muted);
+  --rf-cluster-popup-caption: var(--rf-listing-caption);
+  --rf-cluster-popup-footer-border: var(--rf-popup-border);
+  --rf-cluster-popup-footer-fg: var(--rf-text-primary);
+  --rf-cluster-popup-icon-bg: var(--rf-primary-soft-bg);
+  --rf-cluster-popup-icon-fg: var(--rf-primary-main);
+  --rf-cluster-popup-btn-fg: var(--rf-primary-main);
+  --rf-cluster-popup-btn-border: rgba(13, 148, 136, 0.38);
+  --rf-cluster-popup-btn-bg: var(--rf-primary-soft-bg);
+  --rf-cluster-popup-btn-hover-bg: var(--rf-search-scope-selected-hover-bg);
+  --rf-cluster-popup-btn-hover-border: var(--rf-primary-dark);
+
+  /* Pulso do botão “Mostrar apenas pins” no mapa — anel legível em fundo claro */
+  --rf-pins-only-pulse-ring-min: rgba(15, 118, 110, 0.38);
+  --rf-pins-only-pulse-ring-max: rgba(13, 116, 110, 0.62);
+  --rf-pins-only-pulse-spread-min: rgba(13, 148, 136, 0.14);
+  --rf-pins-only-pulse-spread-mid: rgba(13, 148, 136, 0.32);
+  --rf-pins-only-pulse-spread-max: rgba(13, 148, 136, 0.18);
+
+  /* Pulso ao redor do círculo do cluster (só CSS; sem handlers no anel) */
+  --rf-cluster-marker-pulse-ring-min: rgba(13, 148, 136, 0.38);
+  --rf-cluster-marker-pulse-ring-max: rgba(13, 116, 110, 0.55);
+  --rf-cluster-marker-pulse-spread-min: rgba(13, 148, 136, 0.14);
+  --rf-cluster-marker-pulse-spread-mid: rgba(13, 148, 136, 0.3);
+  --rf-cluster-marker-pulse-spread-max: rgba(13, 148, 136, 0.16);
+}
+
+html.dark {
+  --rf-page-bg: #121416;
+  --rf-page-fg: #e2e2e5;
+
+  --rf-layout-canvas: #121416;
+
+  --rf-primary-main: #2dd4bf;
+  --rf-primary-dark: #14b8a6;
+  --rf-primary-light: #5eead4;
+  --rf-primary-soft-bg: rgba(45, 212, 191, 0.14);
+
+  --rf-logo-house-fill: #0c0e10;
+
+  --rf-secondary-main: #94a3b8;
+  --rf-text-primary: #e2e2e5;
+  --rf-text-secondary: #94a3b8;
+
+  --rf-surface-paper: #1a1c1e;
+  --rf-surface-default: #121416;
+
+  --rf-switch-track: rgba(148, 163, 184, 0.35);
+
+  --rf-listing-price: #34d399;
+  --rf-listing-muted: #9ca3af;
+  --rf-listing-amber: #fbbf24;
+  --rf-link: #93c5fd;
+  --rf-listing-caption: #9ca3af;
+
+  --rf-sidebar-bg: #1a1c1e;
+  --rf-sidebar-fg: #e2e2e5;
+  --rf-sidebar-hover: rgba(45, 212, 191, 0.1);
+  --rf-sidebar-search-bg: #0c0e10;
+
+  --rf-search-dropdown-bg: rgba(26, 28, 30, 0.92);
+  --rf-search-dropdown-border: rgba(255, 255, 255, 0.08);
+  --rf-search-input-bg: #282a2c;
+
+  --rf-search-scope-hover-border: rgba(45, 212, 191, 0.42);
+  --rf-search-scope-selected-hover-bg: rgba(45, 212, 191, 0.24);
+
+  --rf-shadow-tooltip: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --rf-shadow-dropdown: 0 24px 48px rgba(0, 0, 0, 0.4),
+    0 0 1px rgba(0, 0, 0, 0.3);
+  --rf-shadow-cluster-marker: 0 4px 16px rgba(0, 0, 0, 0.5);
+
+  --rf-tooltip-default-bg: rgba(18, 20, 22, 0.94);
+  --rf-tooltip-default-fg: #34d399;
+  --rf-tooltip-default-border: rgba(255, 255, 255, 0.12);
+
+  --rf-tooltip-bairro-bg: rgba(26, 28, 30, 0.94);
+  --rf-tooltip-bairro-fg: #fbbf24;
+  --rf-tooltip-bairro-border: rgba(251, 191, 36, 0.35);
+
+  --rf-coincident-group-bg: var(--rf-cluster-marker-bg);
+  --rf-coincident-group-fg: var(--rf-cluster-marker-fg);
+  --rf-coincident-group-border: var(--rf-primary-main);
+  --rf-coincident-group-icon-fg: #99f6e4;
+  --rf-coincident-group-pulse-min: var(--rf-cluster-marker-pulse-ring-min);
+  --rf-coincident-group-pulse-max: var(--rf-cluster-marker-pulse-ring-max);
+
+  --rf-cluster-marker-bg: #0f766e;
+  --rf-cluster-marker-fg: #f8fafc;
+  --rf-cluster-marker-border: rgba(45, 212, 191, 0.45);
+  --rf-tooltip-cluster-bg: var(--rf-cluster-marker-bg);
+  --rf-tooltip-cluster-fg: var(--rf-cluster-marker-fg);
+  --rf-tooltip-cluster-border: rgba(45, 212, 191, 0.35);
+
+  --rf-map-place-fill: #6b7280;
+  --rf-map-place-fill-opacity: 0.36;
+
+  --rf-map-pin-hover-stroke: #2dd4bf;
+  --rf-map-pin-hover-fill: #14b8a6;
+  --rf-pin-hover-circle-fill: rgba(45, 212, 191, 0.16);
+  --rf-pin-hover-circle-stroke: rgba(45, 212, 191, 0.85);
+  --rf-pin-hover-circle-stroke-width: 2px;
+
+  --rf-popup-bg: var(--rf-surface-paper);
+  --rf-popup-border: rgba(255, 255, 255, 0.16);
+  --rf-popup-shadow: var(--rf-shadow-dropdown);
+  --rf-popup-close: #d4d4d8;
+  --rf-popup-close-hover: #fafafa;
+
+  /* Cluster popup: texto e links mais legíveis sobre fundo #1a1c1e */
+  --rf-cluster-popup-row-hover: rgba(255, 255, 255, 0.1);
+  --rf-cluster-popup-link: #bfdbfe;
+  --rf-cluster-popup-link-hover: #e0f2fe;
+  --rf-cluster-popup-muted: #d1d5db;
+  --rf-cluster-popup-caption: #e5e7eb;
+  --rf-cluster-popup-footer-border: rgba(255, 255, 255, 0.2);
+  --rf-cluster-popup-footer-fg: #f4f4f5;
+  --rf-cluster-popup-icon-bg: rgba(45, 212, 191, 0.18);
+  --rf-cluster-popup-icon-fg: #5eead4;
+  --rf-cluster-popup-btn-fg: #5eead4;
+  --rf-cluster-popup-btn-border: rgba(45, 212, 191, 0.55);
+  --rf-cluster-popup-btn-bg: rgba(45, 212, 191, 0.14);
+  --rf-cluster-popup-btn-hover-bg: rgba(45, 212, 191, 0.26);
+  --rf-cluster-popup-btn-hover-border: #99f6e4;
+
+  --rf-pins-only-pulse-ring-min: rgba(45, 212, 191, 0.22);
+  --rf-pins-only-pulse-ring-max: rgba(45, 212, 191, 0.48);
+  --rf-pins-only-pulse-spread-min: rgba(45, 212, 191, 0.1);
+  --rf-pins-only-pulse-spread-mid: rgba(45, 212, 191, 0.24);
+  --rf-pins-only-pulse-spread-max: rgba(45, 212, 191, 0.12);
+
+  --rf-cluster-marker-pulse-ring-min: rgba(45, 212, 191, 0.24);
+  --rf-cluster-marker-pulse-ring-max: rgba(45, 212, 191, 0.46);
+  --rf-cluster-marker-pulse-spread-min: rgba(45, 212, 191, 0.1);
+  --rf-cluster-marker-pulse-spread-mid: rgba(45, 212, 191, 0.22);
+  --rf-cluster-marker-pulse-spread-max: rgba(45, 212, 191, 0.12);
+}
