@@ -48,7 +48,7 @@
   --rf-sidebar-search-bg: #f9fafb;
 
   /* --- Barra de busca (dropdown / input) --- */
-  --rf-search-dropdown-bg: rgba(255, 255, 255, 0.86);
+  --rf-search-dropdown-bg: #ffffff;
   --rf-search-dropdown-border: rgba(15, 23, 42, 0.08);
   --rf-search-input-bg: #ffffff;
 
@@ -170,7 +170,7 @@ html.dark {
   --rf-sidebar-hover: rgba(45, 212, 191, 0.1);
   --rf-sidebar-search-bg: #0c0e10;
 
-  --rf-search-dropdown-bg: rgba(26, 28, 30, 0.92);
+  --rf-search-dropdown-bg: #1a1c1e;
   --rf-search-dropdown-border: rgba(255, 255, 255, 0.08);
   --rf-search-input-bg: #282a2c;
 

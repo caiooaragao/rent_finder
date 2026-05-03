@@ -4,6 +4,7 @@ import {
   doublePrecision,
   index,
   integer,
+  jsonb,
   pgTable,
   serial,
   text,
@@ -33,6 +34,8 @@ export const cidades = pgTable(
       .notNull()
       .references(() => estados.id, { onDelete: "restrict" }),
     nome: text("nome").notNull(),
+    /** GeoJSON Polygon/MultiPolygon ou Feature (EPSG:4326). Migração: pe_boundary_geojson. */
+    boundaryGeojson: jsonb("boundary_geojson"),
   },
   (t) => [uniqueIndex("cidades_estado_nome_unique").on(t.estadoId, t.nome)],
 );
@@ -45,6 +48,7 @@ export const bairros = pgTable(
       .notNull()
       .references(() => cidades.id, { onDelete: "restrict" }),
     nome: text("nome").notNull(),
+    boundaryGeojson: jsonb("boundary_geojson"),
   },
   (t) => [uniqueIndex("bairros_cidade_nome_unique").on(t.cidadeId, t.nome)],
 );

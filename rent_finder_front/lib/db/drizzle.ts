@@ -1,23 +1,35 @@
-import { drizzle } from "drizzle-orm/postgres-js";
+import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is not set");
-}
-
 const globalForDb = globalThis as unknown as {
   postgresClient?: ReturnType<typeof postgres>;
+  drizzleDb?: PostgresJsDatabase<typeof schema>;
 };
 
-// Re-use the connection in dev to avoid hitting Supabase's connection limit.
-// In production a new connection is created per cold start.
-export const client =
-  globalForDb.postgresClient ??
-  postgres(process.env.DATABASE_URL, { prepare: false });
-
-if (process.env.NODE_ENV !== "production") {
-  globalForDb.postgresClient = client;
+/**
+ * Uma instância por cold start (serverless) / reutilização em dev.
+ * Lazy: só conecta quando há query — permite `next build` sem DATABASE_URL.
+ */
+export function getSql(): ReturnType<typeof postgres> {
+  if (globalForDb.postgresClient) return globalForDb.postgresClient;
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error("DATABASE_URL environment variable is not set");
+  }
+  const sql = postgres(url, {
+    prepare: false,
+    max: 1,
+    idle_timeout: 20,
+    connect_timeout: 20,
+  });
+  globalForDb.postgresClient = sql;
+  return sql;
 }
 
-export const db = drizzle(client, { schema });
+export function getDb(): PostgresJsDatabase<typeof schema> {
+  if (!globalForDb.drizzleDb) {
+    globalForDb.drizzleDb = drizzle(getSql(), { schema });
+  }
+  return globalForDb.drizzleDb;
+}

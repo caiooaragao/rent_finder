@@ -1,11 +1,11 @@
 import { eq, and } from "drizzle-orm";
-import { db } from "./drizzle";
+import { getDb } from "./drizzle";
 import { anuncios, bairros, cidades, estados } from "./schema";
 import type { OlxListing } from "@/types/olx";
 
 /** Todos os anúncios com bairro, cidade e estado resolvidos via JOIN. */
 export async function getListings(): Promise<OlxListing[]> {
-  return db
+  return getDb()
     .select({
       titulo: anuncios.titulo,
       preco: anuncios.preco,
@@ -29,7 +29,7 @@ export async function getListings(): Promise<OlxListing[]> {
 export async function getListingsByCidade(
   nomeCidade: string,
 ): Promise<OlxListing[]> {
-  return db
+  return getDb()
     .select({
       titulo: anuncios.titulo,
       preco: anuncios.preco,
@@ -58,7 +58,7 @@ export async function getListingsByBairro(
   nomeBairro: string,
   nomeCidade: string,
 ): Promise<OlxListing[]> {
-  return db
+  return getDb()
     .select({
       titulo: anuncios.titulo,
       preco: anuncios.preco,

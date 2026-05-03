@@ -1,0 +1,742 @@
+[
+  {
+    "id": 2600054,
+    "nome": "Abreu e Lima"
+  },
+  {
+    "id": 2600104,
+    "nome": "Afogados da Ingazeira"
+  },
+  {
+    "id": 2600203,
+    "nome": "Afrânio"
+  },
+  {
+    "id": 2600302,
+    "nome": "Agrestina"
+  },
+  {
+    "id": 2600401,
+    "nome": "Água Preta"
+  },
+  {
+    "id": 2600500,
+    "nome": "Águas Belas"
+  },
+  {
+    "id": 2600609,
+    "nome": "Alagoinha"
+  },
+  {
+    "id": 2600708,
+    "nome": "Aliança"
+  },
+  {
+    "id": 2600807,
+    "nome": "Altinho"
+  },
+  {
+    "id": 2600906,
+    "nome": "Amaraji"
+  },
+  {
+    "id": 2601003,
+    "nome": "Angelim"
+  },
+  {
+    "id": 2601052,
+    "nome": "Araçoiaba"
+  },
+  {
+    "id": 2601102,
+    "nome": "Araripina"
+  },
+  {
+    "id": 2601201,
+    "nome": "Arcoverde"
+  },
+  {
+    "id": 2601300,
+    "nome": "Barra de Guabiraba"
+  },
+  {
+    "id": 2601409,
+    "nome": "Barreiros"
+  },
+  {
+    "id": 2601508,
+    "nome": "Belém de Maria"
+  },
+  {
+    "id": 2601607,
+    "nome": "Belém do São Francisco"
+  },
+  {
+    "id": 2601706,
+    "nome": "Belo Jardim"
+  },
+  {
+    "id": 2601805,
+    "nome": "Betânia"
+  },
+  {
+    "id": 2601904,
+    "nome": "Bezerros"
+  },
+  {
+    "id": 2602001,
+    "nome": "Bodocó"
+  },
+  {
+    "id": 2602100,
+    "nome": "Bom Conselho"
+  },
+  {
+    "id": 2602209,
+    "nome": "Bom Jardim"
+  },
+  {
+    "id": 2602308,
+    "nome": "Bonito"
+  },
+  {
+    "id": 2602407,
+    "nome": "Brejão"
+  },
+  {
+    "id": 2602506,
+    "nome": "Brejinho"
+  },
+  {
+    "id": 2602605,
+    "nome": "Brejo da Madre de Deus"
+  },
+  {
+    "id": 2602704,
+    "nome": "Buenos Aires"
+  },
+  {
+    "id": 2602803,
+    "nome": "Buíque"
+  },
+  {
+    "id": 2602902,
+    "nome": "Cabo de Santo Agostinho"
+  },
+  {
+    "id": 2603009,
+    "nome": "Cabrobó"
+  },
+  {
+    "id": 2603108,
+    "nome": "Cachoeirinha"
+  },
+  {
+    "id": 2603207,
+    "nome": "Caetés"
+  },
+  {
+    "id": 2603306,
+    "nome": "Calçado"
+  },
+  {
+    "id": 2603405,
+    "nome": "Calumbi"
+  },
+  {
+    "id": 2603454,
+    "nome": "Camaragibe"
+  },
+  {
+    "id": 2603504,
+    "nome": "Camocim de São Félix"
+  },
+  {
+    "id": 2603603,
+    "nome": "Camutanga"
+  },
+  {
+    "id": 2603702,
+    "nome": "Canhotinho"
+  },
+  {
+    "id": 2603801,
+    "nome": "Capoeiras"
+  },
+  {
+    "id": 2603900,
+    "nome": "Carnaíba"
+  },
+  {
+    "id": 2603926,
+    "nome": "Carnaubeira da Penha"
+  },
+  {
+    "id": 2604007,
+    "nome": "Carpina"
+  },
+  {
+    "id": 2604106,
+    "nome": "Caruaru"
+  },
+  {
+    "id": 2604155,
+    "nome": "Casinhas"
+  },
+  {
+    "id": 2604205,
+    "nome": "Catende"
+  },
+  {
+    "id": 2604304,
+    "nome": "Cedro"
+  },
+  {
+    "id": 2604403,
+    "nome": "Chã de Alegria"
+  },
+  {
+    "id": 2604502,
+    "nome": "Chã Grande"
+  },
+  {
+    "id": 2604601,
+    "nome": "Condado"
+  },
+  {
+    "id": 2604700,
+    "nome": "Correntes"
+  },
+  {
+    "id": 2604809,
+    "nome": "Cortês"
+  },
+  {
+    "id": 2604908,
+    "nome": "Cumaru"
+  },
+  {
+    "id": 2605004,
+    "nome": "Cupira"
+  },
+  {
+    "id": 2605103,
+    "nome": "Custódia"
+  },
+  {
+    "id": 2605152,
+    "nome": "Dormentes"
+  },
+  {
+    "id": 2605202,
+    "nome": "Escada"
+  },
+  {
+    "id": 2605301,
+    "nome": "Exu"
+  },
+  {
+    "id": 2605400,
+    "nome": "Feira Nova"
+  },
+  {
+    "id": 2605459,
+    "nome": "Fernando de Noronha"
+  },
+  {
+    "id": 2605509,
+    "nome": "Ferreiros"
+  },
+  {
+    "id": 2605608,
+    "nome": "Flores"
+  },
+  {
+    "id": 2605707,
+    "nome": "Floresta"
+  },
+  {
+    "id": 2605806,
+    "nome": "Frei Miguelinho"
+  },
+  {
+    "id": 2605905,
+    "nome": "Gameleira"
+  },
+  {
+    "id": 2606002,
+    "nome": "Garanhuns"
+  },
+  {
+    "id": 2606101,
+    "nome": "Glória do Goitá"
+  },
+  {
+    "id": 2606200,
+    "nome": "Goiana"
+  },
+  {
+    "id": 2606309,
+    "nome": "Granito"
+  },
+  {
+    "id": 2606408,
+    "nome": "Gravatá"
+  },
+  {
+    "id": 2606507,
+    "nome": "Iati"
+  },
+  {
+    "id": 2606606,
+    "nome": "Ibimirim"
+  },
+  {
+    "id": 2606705,
+    "nome": "Ibirajuba"
+  },
+  {
+    "id": 2606804,
+    "nome": "Igarassu"
+  },
+  {
+    "id": 2606903,
+    "nome": "Iguaracy"
+  },
+  {
+    "id": 2607000,
+    "nome": "Inajá"
+  },
+  {
+    "id": 2607109,
+    "nome": "Ingazeira"
+  },
+  {
+    "id": 2607208,
+    "nome": "Ipojuca"
+  },
+  {
+    "id": 2607307,
+    "nome": "Ipubi"
+  },
+  {
+    "id": 2607406,
+    "nome": "Itacuruba"
+  },
+  {
+    "id": 2607505,
+    "nome": "Itaíba"
+  },
+  {
+    "id": 2607604,
+    "nome": "Ilha de Itamaracá"
+  },
+  {
+    "id": 2607653,
+    "nome": "Itambé"
+  },
+  {
+    "id": 2607703,
+    "nome": "Itapetim"
+  },
+  {
+    "id": 2607752,
+    "nome": "Itapissuma"
+  },
+  {
+    "id": 2607802,
+    "nome": "Itaquitinga"
+  },
+  {
+    "id": 2607901,
+    "nome": "Jaboatão dos Guararapes"
+  },
+  {
+    "id": 2607950,
+    "nome": "Jaqueira"
+  },
+  {
+    "id": 2608008,
+    "nome": "Jataúba"
+  },
+  {
+    "id": 2608057,
+    "nome": "Jatobá"
+  },
+  {
+    "id": 2608107,
+    "nome": "João Alfredo"
+  },
+  {
+    "id": 2608206,
+    "nome": "Joaquim Nabuco"
+  },
+  {
+    "id": 2608255,
+    "nome": "Jucati"
+  },
+  {
+    "id": 2608305,
+    "nome": "Jupi"
+  },
+  {
+    "id": 2608404,
+    "nome": "Jurema"
+  },
+  {
+    "id": 2608453,
+    "nome": "Lagoa do Carro"
+  },
+  {
+    "id": 2608503,
+    "nome": "Lagoa de Itaenga"
+  },
+  {
+    "id": 2608602,
+    "nome": "Lagoa do Ouro"
+  },
+  {
+    "id": 2608701,
+    "nome": "Lagoa dos Gatos"
+  },
+  {
+    "id": 2608750,
+    "nome": "Lagoa Grande"
+  },
+  {
+    "id": 2608800,
+    "nome": "Lajedo"
+  },
+  {
+    "id": 2608909,
+    "nome": "Limoeiro"
+  },
+  {
+    "id": 2609006,
+    "nome": "Macaparana"
+  },
+  {
+    "id": 2609105,
+    "nome": "Machados"
+  },
+  {
+    "id": 2609154,
+    "nome": "Manari"
+  },
+  {
+    "id": 2609204,
+    "nome": "Maraial"
+  },
+  {
+    "id": 2609303,
+    "nome": "Mirandiba"
+  },
+  {
+    "id": 2609402,
+    "nome": "Moreno"
+  },
+  {
+    "id": 2609501,
+    "nome": "Nazaré da Mata"
+  },
+  {
+    "id": 2609600,
+    "nome": "Olinda"
+  },
+  {
+    "id": 2609709,
+    "nome": "Orobó"
+  },
+  {
+    "id": 2609808,
+    "nome": "Orocó"
+  },
+  {
+    "id": 2609907,
+    "nome": "Ouricuri"
+  },
+  {
+    "id": 2610004,
+    "nome": "Palmares"
+  },
+  {
+    "id": 2610103,
+    "nome": "Palmeirina"
+  },
+  {
+    "id": 2610202,
+    "nome": "Panelas"
+  },
+  {
+    "id": 2610301,
+    "nome": "Paranatama"
+  },
+  {
+    "id": 2610400,
+    "nome": "Parnamirim"
+  },
+  {
+    "id": 2610509,
+    "nome": "Passira"
+  },
+  {
+    "id": 2610608,
+    "nome": "Paudalho"
+  },
+  {
+    "id": 2610707,
+    "nome": "Paulista"
+  },
+  {
+    "id": 2610806,
+    "nome": "Pedra"
+  },
+  {
+    "id": 2610905,
+    "nome": "Pesqueira"
+  },
+  {
+    "id": 2611002,
+    "nome": "Petrolândia"
+  },
+  {
+    "id": 2611101,
+    "nome": "Petrolina"
+  },
+  {
+    "id": 2611200,
+    "nome": "Poção"
+  },
+  {
+    "id": 2611309,
+    "nome": "Pombos"
+  },
+  {
+    "id": 2611408,
+    "nome": "Primavera"
+  },
+  {
+    "id": 2611507,
+    "nome": "Quipapá"
+  },
+  {
+    "id": 2611533,
+    "nome": "Quixaba"
+  },
+  {
+    "id": 2611606,
+    "nome": "Recife"
+  },
+  {
+    "id": 2611705,
+    "nome": "Riacho das Almas"
+  },
+  {
+    "id": 2611804,
+    "nome": "Ribeirão"
+  },
+  {
+    "id": 2611903,
+    "nome": "Rio Formoso"
+  },
+  {
+    "id": 2612000,
+    "nome": "Sairé"
+  },
+  {
+    "id": 2612109,
+    "nome": "Salgadinho"
+  },
+  {
+    "id": 2612208,
+    "nome": "Salgueiro"
+  },
+  {
+    "id": 2612307,
+    "nome": "Saloá"
+  },
+  {
+    "id": 2612406,
+    "nome": "Sanharó"
+  },
+  {
+    "id": 2612455,
+    "nome": "Santa Cruz"
+  },
+  {
+    "id": 2612471,
+    "nome": "Santa Cruz da Baixa Verde"
+  },
+  {
+    "id": 2612505,
+    "nome": "Santa Cruz do Capibaribe"
+  },
+  {
+    "id": 2612554,
+    "nome": "Santa Filomena"
+  },
+  {
+    "id": 2612604,
+    "nome": "Santa Maria da Boa Vista"
+  },
+  {
+    "id": 2612703,
+    "nome": "Santa Maria do Cambucá"
+  },
+  {
+    "id": 2612802,
+    "nome": "Santa Terezinha"
+  },
+  {
+    "id": 2612901,
+    "nome": "São Benedito do Sul"
+  },
+  {
+    "id": 2613008,
+    "nome": "São Bento do Una"
+  },
+  {
+    "id": 2613107,
+    "nome": "São Caitano"
+  },
+  {
+    "id": 2613206,
+    "nome": "São João"
+  },
+  {
+    "id": 2613305,
+    "nome": "São Joaquim do Monte"
+  },
+  {
+    "id": 2613404,
+    "nome": "São José da Coroa Grande"
+  },
+  {
+    "id": 2613503,
+    "nome": "São José do Belmonte"
+  },
+  {
+    "id": 2613602,
+    "nome": "São José do Egito"
+  },
+  {
+    "id": 2613701,
+    "nome": "São Lourenço da Mata"
+  },
+  {
+    "id": 2613800,
+    "nome": "São Vicente Férrer"
+  },
+  {
+    "id": 2613909,
+    "nome": "Serra Talhada"
+  },
+  {
+    "id": 2614006,
+    "nome": "Serrita"
+  },
+  {
+    "id": 2614105,
+    "nome": "Sertânia"
+  },
+  {
+    "id": 2614204,
+    "nome": "Sirinhaém"
+  },
+  {
+    "id": 2614303,
+    "nome": "Moreilândia"
+  },
+  {
+    "id": 2614402,
+    "nome": "Solidão"
+  },
+  {
+    "id": 2614501,
+    "nome": "Surubim"
+  },
+  {
+    "id": 2614600,
+    "nome": "Tabira"
+  },
+  {
+    "id": 2614709,
+    "nome": "Tacaimbó"
+  },
+  {
+    "id": 2614808,
+    "nome": "Tacaratu"
+  },
+  {
+    "id": 2614857,
+    "nome": "Tamandaré"
+  },
+  {
+    "id": 2615003,
+    "nome": "Taquaritinga do Norte"
+  },
+  {
+    "id": 2615102,
+    "nome": "Terezinha"
+  },
+  {
+    "id": 2615201,
+    "nome": "Terra Nova"
+  },
+  {
+    "id": 2615300,
+    "nome": "Timbaúba"
+  },
+  {
+    "id": 2615409,
+    "nome": "Toritama"
+  },
+  {
+    "id": 2615508,
+    "nome": "Tracunhaém"
+  },
+  {
+    "id": 2615607,
+    "nome": "Trindade"
+  },
+  {
+    "id": 2615706,
+    "nome": "Triunfo"
+  },
+  {
+    "id": 2615805,
+    "nome": "Tupanatinga"
+  },
+  {
+    "id": 2615904,
+    "nome": "Tuparetama"
+  },
+  {
+    "id": 2616001,
+    "nome": "Venturosa"
+  },
+  {
+    "id": 2616100,
+    "nome": "Verdejante"
+  },
+  {
+    "id": 2616183,
+    "nome": "Vertente do Lério"
+  },
+  {
+    "id": 2616209,
+    "nome": "Vertentes"
+  },
+  {
+    "id": 2616308,
+    "nome": "Vicência"
+  },
+  {
+    "id": 2616407,
+    "nome": "Vitória de Santo Antão"
+  },
+  {
+    "id": 2616506,
+    "nome": "Xexéu"
+  }
+]

@@ -6,10 +6,12 @@
     "migrate": "node runMigrations.mjs",
     "scrape": "node run-scrape-all.mjs",
     "scrape:single": "node --max-old-space-size=4096 --expose-gc scrape-olx-titles.mjs",
-    "sync": "node --max-old-space-size=4096 --expose-gc syncJsonToDb.mjs"
+    "sync": "node --max-old-space-size=4096 --expose-gc syncJsonToDb.mjs",
+    "pe:sync-boundaries": "node pe-nominatim-boundaries/sync-pe-boundaries.mjs"
   },
   "dependencies": {
     "mongodb": "^6.12.0",
+    "osmtogeojson": "^3.0.0-beta.5",
     "postgres": "^3.4.9"
   }
 }

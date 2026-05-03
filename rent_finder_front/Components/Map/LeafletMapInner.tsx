@@ -249,7 +249,10 @@ export default function LeafletMapInner({
         <OlxSuperclusterLayer points={olxPoints} />
 
         <SearchHoveredBairroPolygon location={searchHoveredBairro} />
-        <SelectedSearchPlacePolygon selection={searchPlacePin} />
+        <SelectedSearchPlacePolygon
+          selection={searchPlacePin}
+          listings={listings}
+        />
 
         {children}
       </MapContainer>

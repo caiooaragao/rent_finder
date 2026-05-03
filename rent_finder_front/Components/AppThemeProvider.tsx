@@ -15,23 +15,23 @@ function resolveMuiMode(resolvedTheme: string | undefined): AppColorMode {
   return resolvedTheme === "dark" ? "dark" : "light";
 }
 
-/** Migra `localStorage` antigo com valor `system` para o tema por defeito (escuro). */
+/** Migra `localStorage` antigo com valor `system` para o tema por defeito (claro). */
 function ThemeStorageMigration() {
   const { theme, setTheme } = useNextTheme();
   React.useEffect(() => {
-    if (theme === "system") setTheme("dark");
+    if (theme === "system") setTheme("light");
   }, [theme, setTheme]);
   return null;
 }
 
 function MuiThemeBridge({ children }: { children: React.ReactNode }) {
   const { resolvedTheme } = useNextTheme();
-  /** Até montar, alinhamos ao `defaultTheme` (escuro); depois segue `resolvedTheme` / localStorage. */
+  /** Até montar, alinhamos ao `defaultTheme` (claro); depois segue `resolvedTheme` / localStorage. */
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
 
   const mode = React.useMemo<AppColorMode>(() => {
-    if (!mounted) return "dark";
+    if (!mounted) return "light";
     return resolveMuiMode(resolvedTheme);
   }, [mounted, resolvedTheme]);
 
@@ -67,7 +67,7 @@ export default function AppThemeProvider({
     <AppRouterCacheProvider>
       <NextThemesProvider
         attribute="class"
-        defaultTheme="dark"
+        defaultTheme="light"
         enableSystem={false}
         storageKey="rent-finder-theme"
       >

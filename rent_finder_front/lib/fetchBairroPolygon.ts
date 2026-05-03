@@ -1,18 +1,13 @@
 import type { GeoJsonObject, Polygon } from "geojson";
+import { normalizePolygonalGeoJson } from "@/lib/nominatimGeoJson";
 
 const NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search";
 
 const cache = new Map<string, GeoJsonObject | null>();
 
 function buildCacheKey(bairro: string, cidade: string, estado: string) {
-  return `${bairro}|${cidade}|${estado}`.toLowerCase();
-}
-
-function isPolygonalGeoJson(g: GeoJsonObject): boolean {
-  return (
-    "type" in g &&
-    (g.type === "Polygon" || g.type === "MultiPolygon")
-  );
+  /** `v2`: aceitar geojson tipo Feature do Nominatim — invalida cache antigo null. */
+  return `v2|${bairro}|${cidade}|${estado}`.toLowerCase();
 }
 
 function isPointGeoJson(g: GeoJsonObject): boolean {
@@ -40,9 +35,12 @@ type NominatimRow = {
   boundingbox?: string[];
 };
 
+/** Política Nominatim (uso público): ~1 pedido por segundo — espaço entre inícios de tentativas. */
+const NOMINATIM_MIN_GAP_MS = 1000;
+
 /**
- * Nomes alternativos para o Nominatim: 1.º segmento do endereço primeiro (se diferir do bairro),
- * depois bairro, plural/singular (ex. "Cordeiros" ↔ "Cordeiro").
+ * Ordem otimizada para escolha no autocomplete: nome do bairro primeiro (costuma acertar já na 1.ª request).
+ * Depois plural/singular; por último variantes do endereço (casos em que o texto OLX difere do OSM).
  */
 function bairroQueryVariants(
   bairro: string,
@@ -63,6 +61,10 @@ function bairroQueryVariants(
   };
 
   const bNorm = bairro.trim().toLowerCase();
+  push(bairro);
+  const b = bairro.trim();
+  if (b.length > 3 && b.endsWith("s")) push(b.slice(0, -1));
+
   if (enderecoFallback) {
     const first = enderecoFallback.split(",")[0]?.trim();
     if (first && first.toLowerCase() !== bNorm) {
@@ -71,11 +73,7 @@ function bairroQueryVariants(
     }
   }
 
-  push(bairro);
-  const b = bairro.trim();
-  if (b.length > 3 && b.endsWith("s")) push(b.slice(0, -1));
-
-  return out;
+  return out.slice(0, 3);
 }
 
 async function nominatimSearchFirstPolygon(
@@ -100,7 +98,8 @@ async function nominatimSearchFirstPolygon(
 
   for (const row of data) {
     const g = row.geojson;
-    if (g && isPolygonalGeoJson(g)) return g;
+    const normalized = normalizePolygonalGeoJson(g);
+    if (normalized) return normalized;
   }
 
   for (const row of data) {
@@ -140,10 +139,17 @@ export async function fetchBairroPolygon(
   const variants = bairroQueryVariants(b, enderecoFallback);
 
   try {
+    let lastAttemptStart = 0;
     for (let i = 0; i < variants.length; i++) {
       if (i > 0) {
-        await new Promise((r) => setTimeout(r, 1100));
+        const wait = Math.max(
+          0,
+          lastAttemptStart + NOMINATIM_MIN_GAP_MS - Date.now(),
+        );
+        if (wait > 0)
+          await new Promise((r) => setTimeout(r, wait));
       }
+      lastAttemptStart = Date.now();
       const geojson = await nominatimSearchFirstPolygon(variants[i], c, e);
       if (geojson) {
         cache.set(key, geojson);

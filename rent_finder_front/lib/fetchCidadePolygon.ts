@@ -1,11 +1,12 @@
 import type { GeoJsonObject } from "geojson";
+import { normalizePolygonalGeoJson } from "@/lib/nominatimGeoJson";
 
 const NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search";
 
 const cache = new Map<string, GeoJsonObject | null>();
 
 function buildCacheKey(cidade: string, estado: string) {
-  return `city|${cidade}|${estado}`.toLowerCase();
+  return `v2|city|${cidade}|${estado}`.toLowerCase();
 }
 
 /**
@@ -27,26 +28,25 @@ export async function fetchCidadePolygon(
   url.searchParams.set("q", q);
   url.searchParams.set("format", "json");
   url.searchParams.set("polygon_geojson", "1");
-  url.searchParams.set("limit", "1");
+  /** Vários hits — o primeiro pode vir só como place ou sem polígono detalhado. */
+  url.searchParams.set("limit", "10");
 
   try {
     const res = await fetch(url.toString(), {
-      headers: { "User-Agent": "rent-finder/1.0" },
+      headers: { "User-Agent": "rent-finder/1.0 (cidade polygon)" },
     });
     if (!res.ok) {
       cache.set(key, null);
       return null;
     }
     const data: Array<{ geojson?: GeoJsonObject }> = await res.json();
-    const geojson = data[0]?.geojson ?? null;
 
-    if (
-      geojson &&
-      "type" in geojson &&
-      (geojson.type === "Polygon" || geojson.type === "MultiPolygon")
-    ) {
-      cache.set(key, geojson);
-      return geojson;
+    for (const row of data) {
+      const normalized = normalizePolygonalGeoJson(row.geojson);
+      if (normalized) {
+        cache.set(key, normalized);
+        return normalized;
+      }
     }
 
     cache.set(key, null);

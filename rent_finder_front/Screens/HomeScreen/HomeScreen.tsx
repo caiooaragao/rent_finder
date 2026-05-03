@@ -148,7 +148,7 @@ const HomeScreen = ({ listings }: HomeScreenProps) => {
     const label = o.primaryLabel.trim();
     selectedPlaceQueryRef.current = label;
     /** Evita `input` com "" ou parcial antes do texto final do autocomplete. */
-    suppressPlacePinClearUntilRef.current = Date.now() + 120;
+    suppressPlacePinClearUntilRef.current = Date.now() + 450;
     if (o.kind === "bairro") {
       setPlacePin({
         kind: "bairro",

@@ -183,8 +183,11 @@ export function SearchBar({
   }, [highlightedIndex, suggestions, onSuggestionHover]);
 
   return (
-    <div className={`flex w-full flex-col gap-2 ${className ?? ""}`}>
-      <div ref={containerRef} className="relative w-full">
+    <div
+      ref={containerRef}
+      className={`flex w-full flex-col gap-2 ${className ?? ""}`}
+    >
+      <div className="relative w-full">
         <div className="flex items-center gap-1 rounded-lg border border-[var(--rf-search-dropdown-border)] bg-[var(--rf-search-input-bg)] px-2 py-1.5 pl-2">
           <span className="flex size-[18px] shrink-0 items-center justify-center text-[var(--rf-text-secondary)]">
             <SearchOutlined className="!text-[18px]" />
@@ -259,13 +262,13 @@ export function SearchBar({
                         aria-hidden
                         className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[var(--rf-primary-soft-bg)] text-[var(--rf-primary-main)]"
                       >
-                        <Icon className="text-[0.8125rem] opacity-[0.92]" />
+                        <Icon className="text-[0.8125rem]" />
                       </div>
                       <div className="min-w-0 flex-1 pt-px">
                         <p className="text-[0.75rem] font-medium leading-snug tracking-tight">
                           {option.primaryLabel}
                         </p>
-                        <p className="mt-0.5 block text-[0.6875rem] leading-snug text-[var(--rf-text-secondary)] opacity-90">
+                        <p className="mt-0.5 block text-[0.6875rem] leading-snug text-[var(--rf-text-secondary)]">
                           {option.secondaryLabel}
                         </p>
                       </div>

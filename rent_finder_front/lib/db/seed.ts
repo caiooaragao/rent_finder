@@ -12,7 +12,7 @@
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { eq } from "drizzle-orm";
-import { db, client } from "./drizzle";
+import { getDb, getSql } from "./drizzle";
 import { estados, cidades, bairros, anuncios } from "./schema";
 import type { NewAnuncio } from "./schema";
 
@@ -33,7 +33,7 @@ type RawListing = {
 async function resolveOrCreateEstado(
   sigla: string,
 ): Promise<number> {
-  const existing = await db
+  const existing = await getDb()
     .select({ id: estados.id })
     .from(estados)
     .where(eq(estados.sigla, sigla))
@@ -41,7 +41,7 @@ async function resolveOrCreateEstado(
 
   if (existing.length > 0) return existing[0].id;
 
-  const [row] = await db
+  const [row] = await getDb()
     .insert(estados)
     .values({ nome: sigla, sigla })
     .onConflictDoNothing()
@@ -49,7 +49,7 @@ async function resolveOrCreateEstado(
 
   if (row) return row.id;
 
-  const [found] = await db
+  const [found] = await getDb()
     .select({ id: estados.id })
     .from(estados)
     .where(eq(estados.sigla, sigla))
@@ -61,7 +61,7 @@ async function resolveOrCreateCidade(
   nome: string,
   estadoId: number,
 ): Promise<number> {
-  const existing = await db
+  const existing = await getDb()
     .select({ id: cidades.id })
     .from(cidades)
     .where(eq(cidades.nome, nome))
@@ -69,7 +69,7 @@ async function resolveOrCreateCidade(
 
   if (existing.length > 0) return existing[0].id;
 
-  const [row] = await db
+  const [row] = await getDb()
     .insert(cidades)
     .values({ nome, estadoId })
     .onConflictDoNothing()
@@ -77,7 +77,7 @@ async function resolveOrCreateCidade(
 
   if (row) return row.id;
 
-  const [found] = await db
+  const [found] = await getDb()
     .select({ id: cidades.id })
     .from(cidades)
     .where(eq(cidades.nome, nome))
@@ -89,7 +89,7 @@ async function resolveOrCreateBairro(
   nome: string,
   cidadeId: number,
 ): Promise<number> {
-  const existing = await db
+  const existing = await getDb()
     .select({ id: bairros.id })
     .from(bairros)
     .where(eq(bairros.nome, nome))
@@ -97,7 +97,7 @@ async function resolveOrCreateBairro(
 
   if (existing.length > 0) return existing[0].id;
 
-  const [row] = await db
+  const [row] = await getDb()
     .insert(bairros)
     .values({ nome, cidadeId })
     .onConflictDoNothing()
@@ -105,7 +105,7 @@ async function resolveOrCreateBairro(
 
   if (row) return row.id;
 
-  const [found] = await db
+  const [found] = await getDb()
     .select({ id: bairros.id })
     .from(bairros)
     .where(eq(bairros.nome, nome))
@@ -153,7 +153,7 @@ async function seed() {
       bairroId,
     };
 
-    const result = await db
+    const result = await getDb()
       .insert(anuncios)
       .values(row)
       .onConflictDoNothing()
@@ -175,6 +175,6 @@ seed()
     process.exit(1);
   })
   .finally(async () => {
-    await client.end();
+    await getSql().end({ timeout: 5 });
     process.exit(0);
   });
