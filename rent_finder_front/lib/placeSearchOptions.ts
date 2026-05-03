@@ -8,6 +8,11 @@ function norm(s: string) {
   return s.trim().toLowerCase();
 }
 
+/** Contagem com plural correto em PT: "1 imóvel" / "N imóveis". */
+function countImoveisLabel(count: number): string {
+  return `${count} ${count === 1 ? "imóvel" : "imóveis"}`;
+}
+
 function stripAccents(s: string): string {
   return s
     .normalize("NFD")
@@ -94,7 +99,7 @@ export function buildBairroSearchOptions(
     cidade: v.cidade,
     estado: v.estado,
     primaryLabel: v.bairro,
-    secondaryLabel: `${v.cidade}${v.estado ? ` · ${v.estado}` : ""} · ${v.count} imóvel${v.count === 1 ? "" : "es"}`,
+    secondaryLabel: `${v.cidade}${v.estado ? ` · ${v.estado}` : ""} · ${countImoveisLabel(v.count)}`,
     listingCount: v.count,
   }));
 
@@ -146,7 +151,7 @@ export function buildCidadeSearchOptions(
     cidade: v.cidade,
     estado: v.estado,
     primaryLabel: v.cidade,
-    secondaryLabel: `${v.estado ? `${v.estado} · ` : ""}${v.count} imóvel${v.count === 1 ? "" : "es"}`,
+    secondaryLabel: `${v.estado ? `${v.estado} · ` : ""}${countImoveisLabel(v.count)}`,
     listingCount: v.count,
   }));
 

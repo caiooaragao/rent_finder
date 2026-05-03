@@ -156,7 +156,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 textOverflow: "ellipsis",
               }}
             >
-              HomeSpread
+              Find my home
             </Typography>
           ) : null}
         </Box>
