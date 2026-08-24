@@ -86,19 +86,82 @@ front_port_in_use() {
 
 pids_listening_on_port() {
   local port="$1"
+  local -a found=()
+  local pid line cid
+
   if command -v lsof >/dev/null 2>&1; then
-    lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true
-    return
+    while IFS= read -r pid; do
+      [[ -n "$pid" ]] && found+=("$pid")
+    done < <(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
   fi
+
   if command -v fuser >/dev/null 2>&1; then
-    fuser -n tcp "$port" 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+$' || true
-    return
+    while IFS= read -r pid; do
+      [[ -n "$pid" ]] && found+=("$pid")
+    done < <(fuser -n tcp "$port" 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+$' || true)
   fi
+
   if command -v ss >/dev/null 2>&1; then
-    ss -ltnp "sport = :$port" 2>/dev/null \
-      | sed -n 's/.*pid=\([0-9]*\).*/\1/p' \
-      | sort -u
+    while IFS= read -r line; do
+      [[ "$line" == *":$port"* ]] || continue
+      while IFS= read -r pid; do
+        [[ -n "$pid" ]] && found+=("$pid")
+      done < <(sed -n 's/.*pid=\([0-9]*\).*/\1/p' <<<"$line")
+    done < <(ss -ltnpH 2>/dev/null | grep -E ":${port}([^0-9]|$)" || true)
   fi
+
+  if command -v netstat >/dev/null 2>&1; then
+    while IFS= read -r line; do
+      pid="$(awk '{print $NF}' <<<"$line" | sed 's|/[^/]*$||')"
+      [[ "$pid" =~ ^[0-9]+$ ]] && found+=("$pid")
+    done < <(netstat -tlnp 2>/dev/null | grep -E ":${port}([^0-9]|$)" || true)
+  fi
+
+  if command -v docker >/dev/null 2>&1; then
+    while IFS= read -r cid; do
+      [[ -n "$cid" ]] || continue
+      pid="$(docker inspect -f '{{.State.Pid}}' "$cid" 2>/dev/null || true)"
+      [[ "$pid" =~ ^[0-9]+$ ]] && [[ "$pid" -gt 0 ]] && found+=("$pid")
+    done < <(docker_container_ids_on_port "$port")
+  fi
+
+  printf '%s\n' "${found[@]}" | sort -u
+}
+
+docker_container_ids_on_port() {
+  local port="$1"
+  local cid ports
+
+  while IFS= read -r cid; do
+    [[ -n "$cid" ]] || continue
+    ports="$(docker port "$cid" 2>/dev/null || true)"
+    if grep -qE ":${port}([[:space:]]|$)" <<<"$ports"; then
+      echo "$cid"
+      continue
+    fi
+    if docker ps --format '{{.ID}} {{.Ports}}' --filter "id=$cid" 2>/dev/null \
+      | grep -qE "[0-9.:]+:${port}->"; then
+      echo "$cid"
+    fi
+  done < <(docker ps -q 2>/dev/null || true)
+}
+
+force_kill_port_listeners() {
+  local port="$1"
+
+  if command -v fuser >/dev/null 2>&1; then
+    log "A forçar libertação da porta $port (fuser)..."
+    fuser -k -TERM "${port}/tcp" 2>/dev/null || true
+    sleep 2
+    fuser -k -KILL "${port}/tcp" 2>/dev/null || true
+    return 0
+  fi
+
+  local pid
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+    kill -9 "$pid" 2>/dev/null || true
+  done < <(pids_listening_on_port "$port")
 }
 
 kill_pid_gracefully() {
@@ -153,13 +216,10 @@ cleanup_front_docker() {
 
   while IFS= read -r cid; do
     [[ -n "$cid" ]] || continue
-    log "A remover container Docker ocupando :$FRONT_PORT ($cid)..."
+    cname="$(docker inspect -f '{{.Name}}' "$cid" 2>/dev/null | sed 's|^/||')"
+    log "A remover container Docker mapeado para :$FRONT_PORT (${cname:-$cid})..."
     docker rm -f "$cid" 2>/dev/null || true
-  done < <(
-    docker ps --format '{{.ID}} {{.Ports}}' 2>/dev/null \
-      | grep -E "[0-9.:]+:${FRONT_PORT}->" \
-      | awk '{print $1}' || true
-  )
+  done < <(docker_container_ids_on_port "$FRONT_PORT")
 
   while IFS= read -r img_id; do
     [[ -n "$img_id" ]] || continue
@@ -177,7 +237,7 @@ cleanup_front_docker() {
 
 free_front_port() {
   local -a pids=()
-  local pid
+  local pid attempt
 
   cleanup_front_docker
 
@@ -191,31 +251,35 @@ free_front_port() {
     return 0
   fi
 
-  while IFS= read -r pid; do
-    [[ -n "$pid" ]] && pids+=("$pid")
-  done < <(pids_listening_on_port "$FRONT_PORT")
+  for attempt in 1 2 3; do
+    pids=()
+    while IFS= read -r pid; do
+      [[ -n "$pid" ]] && pids+=("$pid")
+    done < <(pids_listening_on_port "$FRONT_PORT")
 
-  if [[ ${#pids[@]} -eq 0 ]]; then
-    log "Porta $FRONT_PORT ocupada; a aguardar libertação..."
-    for _ in $(seq 1 10); do
-      if ! front_port_in_use; then
-        return 0
-      fi
-      sleep 1
-    done
-    die "Porta $FRONT_PORT continua ocupada e não foi possível identificar o processo."
-  fi
+    if [[ ${#pids[@]} -gt 0 ]]; then
+      log "Porta $FRONT_PORT em uso (PIDs: ${pids[*]}). A encerrar..."
+      for pid in "${pids[@]}"; do
+        kill_pid_gracefully "$pid"
+      done
+    else
+      log "Porta $FRONT_PORT ocupada (tentativa $attempt/3); a procurar processo..."
+      cleanup_front_docker
+      force_kill_port_listeners "$FRONT_PORT"
+    fi
 
-  log "Porta $FRONT_PORT em uso (PIDs: ${pids[*]}). A encerrar..."
-  for pid in "${pids[@]}"; do
-    kill_pid_gracefully "$pid"
+    if ! front_port_in_use; then
+      log "Porta $FRONT_PORT livre."
+      return 0
+    fi
+
+    sleep 2
   done
 
-  if front_port_in_use; then
-    die "Não foi possível libertar a porta $FRONT_PORT."
-  fi
-
-  log "Porta $FRONT_PORT livre."
+  log "Diagnóstico da porta $FRONT_PORT:"
+  ss -ltnp 2>/dev/null | grep -E ":$FRONT_PORT\b" || true
+  docker ps --format 'table {{.Names}}\t{{.Ports}}' 2>/dev/null | grep -E "$FRONT_PORT|PORTS" || true
+  die "Porta $FRONT_PORT continua ocupada. Execute: ./build.sh --stop  ou  fuser -k ${FRONT_PORT}/tcp"
 }
 
 front_is_running() {
