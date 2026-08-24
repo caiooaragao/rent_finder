@@ -545,16 +545,50 @@ async function ensureOlxSession() {
   }
 }
 
+/** @param {string} line */
+function looksLikeOlxAddress(line) {
+  const s = line.trim();
+  if (!s || s.length < 8) return false;
+  if (/^fechar|exibir no mapa|publicidade/i.test(s)) return false;
+  return /,/.test(s) || /\b[A-Z]{2}\b/.test(s) || /\d{5}-?\d{3}/.test(s);
+}
+
 /** @param {string} md */
 function parseAdDetailMarkdown(md) {
-  const descM = md.match(/##\s*Descri[çc][ãa]o\s*([\s\S]*?)(?:##|\Z)/i);
-  const locM = md.match(/##\s*Localiza[çc][ãa]o\s*([\s\S]*?)(?:##|\Z)/i);
-  return {
-    descricao: descM ? stripMarkdownPlainText(descM[1]) : "",
-    endereco: locM
-      ? stripMarkdownPlainText(locM[1]).split("\n").map((l) => l.trim()).filter(Boolean)[0] ?? ""
-      : "",
-  };
+  let descricao = "";
+  const descHeading = md.match(/##\s*Descri[çc][ãa]o\s*([\s\S]*?)(?:##|\Z)/i);
+  if (descHeading) {
+    descricao = stripMarkdownPlainText(descHeading[1]);
+  }
+  if (!descricao) {
+    const inlineDesc = md.match(
+      /C[oó]digo do an[uú]ncio:\s*\d+\s*([\s\S]*?)(?:Ver descri[cç][aã]o completa|(?:^|\n)Localiza[cç][aã]o|\n\* \* \*|\nDetalhes)/im
+    );
+    if (inlineDesc) descricao = stripMarkdownPlainText(inlineDesc[1]);
+  }
+
+  let endereco = "";
+  const locHeading = md.match(/##\s*Localiza[çc][ãa]o\s*([\s\S]*?)(?:##|\Z)/i);
+  if (locHeading) {
+    endereco =
+      stripMarkdownPlainText(locHeading[1])
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)[0] ?? "";
+  }
+  if (!endereco) {
+    const locPlain = /(?:^|\n)Localiza[cç][aã]o\s*\n+([^\n]+)/gim;
+    let m;
+    while ((m = locPlain.exec(md))) {
+      const candidate = stripMarkdownPlainText(m[1]);
+      if (looksLikeOlxAddress(candidate)) {
+        endereco = candidate;
+        break;
+      }
+    }
+  }
+
+  return { descricao, endereco };
 }
 
 /** @param {string} text */
