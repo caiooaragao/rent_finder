@@ -1,0 +1,41 @@
+# Override aplicado pelo setup.sh do Rent Finder.
+# Garante restart automático e volumes nomeados para persistência entre reboots.
+services:
+  db:
+    restart: unless-stopped
+
+  supavisor:
+    restart: unless-stopped
+
+  rest:
+    restart: unless-stopped
+
+  auth:
+    restart: unless-stopped
+
+  studio:
+    restart: unless-stopped
+
+  kong:
+    restart: unless-stopped
+
+  meta:
+    restart: unless-stopped
+
+  realtime:
+    restart: unless-stopped
+
+  storage:
+    restart: unless-stopped
+
+  imgproxy:
+    restart: unless-stopped
+
+  functions:
+    restart: unless-stopped
+
+  analytics:
+    restart: unless-stopped
+
+  vector:
+    restart: unless-stopped

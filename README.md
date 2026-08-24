@@ -100,12 +100,29 @@ rent_finder/
 
 ## Base de dados
 
-- **Motor**: PostgreSQL (recomendado **Supabase** em produção).
+- **Motor**: PostgreSQL via **Supabase self-hosted em Docker** no servidor de deploy (recomendado) ou Supabase Cloud.
 - **ORM**: Drizzle — esquema em `rent_finder_front/lib/db/schema.ts`.
 - **Migrações SQL**: cópias/alinhamento em `rent_finder_front/supabase/migrations/` e fluxos no scraper (`rent_finder_scraper/migrations/`).
 - **Conexão**: `DATABASE_URL`; o cliente é criado **lazy** (`getDb()` / `getSql()` em `lib/db/drizzle.ts`) para permitir `next build` sem credenciais no ambiente de CI e para reutilizar conexão em ambientes serverless.
 
 Relações principais (conceito): `anuncios` ligados a `bairros`, `cidades`, `estados` quando os IDs estão preenchidos; joins à esquerda quando faltam FKs.
+
+### Supabase self-hosted (Docker)
+
+O banco corre no **mesmo servidor** que a aplicação, com dados persistentes em disco (`docker/supabase/project/volumes/db/data`). Sobrevive a reinícios do Docker e do SO.
+
+```bash
+# No servidor (Linux + Docker)
+cd docker/supabase && chmod +x *.sh && ./setup.sh
+
+# Na raiz do monorepo
+cp docker/supabase/.env.generated rent_finder_front/.env.local
+npm run db:migrate
+```
+
+Documentação completa: [`docker/supabase/README.md`](docker/supabase/README.md).
+
+Scripts na raiz: `npm run db:setup`, `db:up`, `db:down`, `db:status`, `db:backup`.
 
 ---
 
@@ -118,6 +135,166 @@ Relações principais (conceito): `anuncios` ligados a `bairros`, `cidades`, `es
 | `npm run scrape:single` | Scrape focado (`scrape-olx-titles.mjs`), com mais memória heap se necessário. |
 | `npm run sync` | Sincroniza JSON gerado para Postgres (`syncJsonToDb.mjs`). |
 
+### Como passar argumentos
+
+Os scripts são chamados por `npm` na raiz. Para repassar flags ao script Node, use:
+
+```bash
+npm run <script> -- <flags>
+```
+
+Exemplo:
+
+```bash
+npm run scrape -- --pages 2 --no-db
+```
+
+### Pré-requisitos do scraper
+
+- Instalar dependências em `rent_finder_scraper`: `npm install`.
+- Para escrita em banco: definir `DATABASE_URL` (carregado de `rent_finder_scraper/.env` e/ou `rent_finder_front/.env.local`).
+- Ferramenta `curl` disponível no sistema (usada para páginas OLX e geocode ArcGIS).
+
+### Comando `npm run scrape` (pipeline completo)
+
+Executa `run-scrape-all.mjs`:
+
+1. (Se DB ativo) aplica migrations uma vez.
+2. (Se DB ativo e sem `--no-truncate`) limpa `anuncios` uma vez.
+3. Roda o scraper em processo separado para cada URL de pesquisa OLX predefinida.
+4. Gera JSON por execução e faz upsert no banco por link.
+
+Uso base:
+
+```bash
+npm run scrape
+```
+
+Flags aceitas:
+
+- `--pages <n>` ou `-n <n>`: limita páginas por URL de pesquisa (bom para testes rápidos).
+- `--concurrency <n>` ou `-c <n>`: concorrência da fase de detalhes por lote.
+- `--geocode-concurrency <n>`: concorrência da fase de geocode por lote.
+- `--batch-size <n>`: tamanho de lote para processamento.
+- `--detail-max <n>`: busca detalhes apenas para os primeiros `n` anúncios.
+- `--skip-geocode`: não chama ArcGIS; campos de localização ficam `null`.
+- `--skip-details`: pula coleta de detalhes de anúncio (descrição/endereço).
+- `--stdout`: imprime o JSON final também no stdout.
+- `--no-db`: não grava no banco, só gera JSON.
+- `--no-truncate`: não limpa dados antigos antes de inserir/atualizar.
+- `--heap <mb>`: heap em MB para cada processo filho (default `4096`).
+
+Exemplos:
+
+```bash
+npm run scrape -- --pages 2 --no-db
+npm run scrape -- --concurrency 5 --geocode-concurrency 10
+npm run scrape -- --skip-geocode --batch-size 300
+npm run scrape -- --heap 6144
+```
+
+Saídas esperadas:
+
+- Arquivos JSON no diretório `rent_finder_scraper` (ex.: `olx-scrape-0.json`, `olx-scrape-1.json`).
+- Logs por fase: listagem, detalhes, geocode, regras de negócio e sync DB.
+- Se DB ativo: registros inseridos/atualizados na tabela `anuncios`.
+
+### Comando `npm run scrape:single` (scraper direto/focado)
+
+Executa `scrape-olx-titles.mjs` com heap maior:
+
+```bash
+npm run scrape:single
+```
+
+Pode receber URL posicional para substituir o array interno de pesquisas:
+
+```bash
+npm run scrape:single -- "https://www.olx.com.br/imoveis/aluguel/estado-pe?q=kitnet"
+```
+
+Flags aceitas:
+
+- `--pages <n>` ou `-n <n>`: limite de páginas por pesquisa.
+- `--detail-max <n>`: limita quantos anúncios terão página de detalhe processada.
+- `--batch-size <n>`: anúncios por lote (default `1000`).
+- `--concurrency <n>` ou `-c <n>`: concorrência de detalhes (default `5`).
+- `--geocode-concurrency <n>`: concorrência de geocode (default = `--concurrency`).
+- `--out <arquivo>` ou `-o <arquivo>`: caminho do JSON de saída (default `olx-scrape.json`).
+- `--stdout`: imprime JSON também no terminal.
+- `--skip-geocode`: não geocodifica endereços.
+- `--no-db`: não toca no banco.
+- `--skip-migrate`: não aplica migrations antes de gravar.
+- `--no-truncate`: mantém dados já existentes no banco.
+
+Dados por anúncio no JSON (quando disponíveis):
+
+- `titulo`, `preco`, `link`
+- `descricao`, `endereco`
+- `latitude`, `longitude`
+- `bairro`, `cidade`, `estado`
+- Campos adicionais do pipeline de regras de negócio (normalização/dedupe), se aplicável.
+
+### Comando `npm run sync` (JSON -> banco, sem novo scrape)
+
+Executa `syncJsonToDb.mjs`, lendo um JSON existente e fazendo upsert em lotes:
+
+```bash
+npm run sync
+```
+
+Flags úteis:
+
+- `--input <arquivo>` ou `-i <arquivo>`: JSON de entrada (default `olx-scrape.json`).
+- `--skip-migrate`: pula aplicação de migrations.
+- `--batch-size <n>`: tamanho dos lotes de sync (default `500`).
+
+Exemplo:
+
+```bash
+npm run sync -- --input rent_finder_scraper/olx-scrape-0.json --batch-size 200
+```
+
+### Comando `npm run migrate`
+
+Executa apenas as migrações SQL:
+
+```bash
+npm run migrate
+```
+
+Use este comando quando quiser preparar o esquema do banco antes de rodar scrape/sync.
+
+### Presets de execução (copiar e colar)
+
+| Perfil | Objetivo | Comando |
+|--------|----------|---------|
+| **Rápido (teste)** | Validar pipeline ponta a ponta com baixo volume, mantendo detalhes + geocode. | `npm run scrape -- --pages 1 --detail-max 20 --batch-size 50 --concurrency 3 --geocode-concurrency 3` |
+| **Médio (homologação)** | Coletar mais dados com tempo controlado e boa cobertura. | `npm run scrape -- --pages 3 --batch-size 300 --concurrency 5 --geocode-concurrency 5` |
+| **Full (produção, mais rápido possível)** | Popular o banco com o máximo de dados, sem limitar páginas/detalhes, com maior paralelismo seguro. | `npm run scrape -- --batch-size 600 --concurrency 10 --geocode-concurrency 10 --heap 6144` |
+
+### Preset full para popular o banco rápido
+
+Use este comando para preencher o banco com todos os dados possíveis no menor tempo prático:
+
+```bash
+npm run scrape -- --batch-size 600 --concurrency 10 --geocode-concurrency 10 --heap 6144
+```
+
+Por que esse preset é o mais rápido para full scrape:
+
+- não usa `--pages` nem `--detail-max`, então percorre todo o volume disponível;
+- mantém gravação em DB ativa (sem `--no-db`);
+- aumenta paralelismo de detalhes e geocode para reduzir tempo total;
+- aumenta heap por processo para reduzir risco de gargalo/morte por memória.
+
+Notas operacionais para velocidade máxima:
+
+- se o host tiver poucos recursos, comece em `--concurrency 8 --geocode-concurrency 8`;
+- se notar estabilidade e folga de CPU/RAM/rede, teste `12/12`;
+- não use `--skip-geocode` se você precisa de bairro/cidade/estado completos no banco;
+- mantenha sem `--no-truncate` para substituir dados antigos por um snapshot novo completo.
+
 Variáveis sensíveis e caminhos devem estar documentados nos próprios scripts ou num `.env` local no scraper — não commitar segredos.
 
 ---
@@ -128,9 +305,9 @@ Variáveis sensíveis e caminhos devem estar documentados nos próprios scripts 
 
 | Variável | Obrigatória | Descrição |
 |----------|-------------|-----------|
-| `DATABASE_URL` | **Sim** em runtime (produção/preview) | URI PostgreSQL (Supabase: porta sessão `5432` ou pooler `6543`; usar `prepare: false` no cliente, já configurado no código). |
+| `DATABASE_URL` | **Sim** em runtime | URI PostgreSQL. Self-hosted: `postgresql://postgres.rentfinder:[PASSWORD]@127.0.0.1:6543/postgres` (pooler transaction). Cloud: pooler `6543` ou direto `5432`. O cliente usa `prepare: false` (já configurado). |
 
-Copiar `rent_finder_front/.env.example` para `.env.local` e preencher.
+Copiar `rent_finder_front/.env.example` para `.env.local`. Após `npm run db:setup`, use `docker/supabase/.env.generated`.
 
 ### Scraper
 
@@ -144,6 +321,15 @@ Conforme os scripts (`loadEnv.mjs`, etc.): tipicamente URL da base e credenciais
 
 - **Node.js** ≥ 20.9 (ver `engines` em `rent_finder_front/package.json`).
 - **npm** (ou equivalente) para instalar dependências.
+- **Docker** (opcional, para Supabase local): ver [`docker/supabase/README.md`](docker/supabase/README.md).
+
+### Base de dados local (Supabase Docker)
+
+```bash
+npm run db:setup          # primeira vez — instala e inicia Supabase
+cp docker/supabase/.env.generated rent_finder_front/.env.local
+npm run db:migrate
+```
 
 ### Instalar dependências
 
@@ -173,6 +359,27 @@ npm run build   # build de produção Next.js
 
 ## Build e deploy
 
+### Deploy no servidor (recomendado com Supabase Docker)
+
+1. No servidor Linux, instale Docker e execute `docker/supabase/setup.sh` (ou `npm run db:setup`).
+2. Configure `DATABASE_URL` no ambiente da app (`.env.local` ou variáveis do process manager).
+3. `npm run db:migrate` e `npm run build` / `npm run dev` (ou PM2/systemd para produção).
+4. Agende `npm run db:backup` via cron para cópias de segurança extra.
+
+Os dados persistem em `docker/supabase/project/volumes/db/data` (ou `/opt/rent-finder/supabase/volumes/` se instalou nesse caminho).
+
+### Deploy completo (um comando)
+
+```bash
+chmod +x build.sh
+./build.sh --start          # deps + Supabase + migrate + build + next start
+./build.sh --dev              # idem, mas em modo desenvolvimento (porta 5000)
+./build.sh --scrape           # inclui scrape OLX após migrate
+./build.sh --skip-db          # se o banco já estiver a correr
+```
+
+Equivalente via npm: `npm run deploy` (produção) ou `npm run deploy:dev`.
+
 ### Build local
 
 ```bash
@@ -181,13 +388,15 @@ npm run build
 
 Exige normalmente `DATABASE_URL` disponível quando rotas dinâmicas ou ferramentas avaliam código que importa `getListings`; em CI, configurar o segredo ou usar build com env injetado.
 
-### Vercel (recomendado para o Next.js)
+### Vercel (alternativa — requer Supabase Cloud ou Postgres acessível na rede)
 
 1. Importar o repositório e definir **Root Directory** = `rent_finder_front` se o deploy partir da raiz do monorepo.
 2. Adicionar **`DATABASE_URL`** em *Environment Variables* (Production e Preview).
 3. Opcional: `vercel.json` no front já sugere framework Next.js e região `gru1` (ajustável).
 
 Autenticação CLI: `npx vercel login` antes de `npx vercel` / `npx vercel --prod`.
+
+> Para self-hosted, o deploy na Vercel só funciona se o Postgres no seu servidor estiver exposto na internet (não recomendado). Prefira correr a app no mesmo servidor que o Docker.
 
 ---
 

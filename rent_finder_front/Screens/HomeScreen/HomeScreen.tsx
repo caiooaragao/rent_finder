@@ -3,6 +3,8 @@
 import * as React from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Switch from "@mui/material/Switch";
 import Typography from "@mui/material/Typography";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
@@ -67,6 +69,8 @@ const HomeScreen = ({ listings }: HomeScreenProps) => {
   );
 
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
+  /** Com `false`, o hover no mapa abre um painel à direita em vez do popup Leaflet. */
+  const [hoverPopupsEnabled, setHoverPopupsEnabled] = React.useState(true);
   const [priceSlider, setPriceSlider] = React.useState<[number, number]>(
     () => [priceBounds.min, priceBounds.max],
   );
@@ -343,6 +347,28 @@ const HomeScreen = ({ listings }: HomeScreenProps) => {
               </ToggleButton>
             </ToggleButtonGroup>
           </Box>
+          <FormControlLabel
+            sx={{
+              alignItems: "center",
+              mx: 0,
+              gap: 0.75,
+              "& .MuiFormControlLabel-label": {
+                fontSize: "0.8125rem",
+                fontWeight: 500,
+              },
+            }}
+            control={
+              <Switch
+                checked={hoverPopupsEnabled}
+                onChange={(_, v) => setHoverPopupsEnabled(v)}
+                size="small"
+                inputProps={{
+                  "aria-label": "Popups ao passar o rato no mapa",
+                }}
+              />
+            }
+            label="Popups ao passar o rato"
+          />
           {activeFilterSummary ? (
             <Typography
               variant="caption"
@@ -389,6 +415,7 @@ const HomeScreen = ({ listings }: HomeScreenProps) => {
             searchHoveredBairro={searchHoveredPlace}
             priceRange={priceFilter}
             basemap={mapBasemap}
+            hoverPopupsEnabled={hoverPopupsEnabled}
           />
         </div>
       </main>

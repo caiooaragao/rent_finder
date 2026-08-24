@@ -4,8 +4,16 @@
   "scripts": {
     "dev": "npm run dev --prefix rent_finder_front",
     "build": "npm run build --prefix rent_finder_front",
+    "start": "npm run start --prefix rent_finder_front",
     "lint": "npm run lint --prefix rent_finder_front",
     "scrape": "npm run scrape --prefix rent_finder_scraper",
-    "db:migrate": "npm run migrate --prefix rent_finder_scraper"
+    "db:migrate": "npm run migrate --prefix rent_finder_scraper",
+    "db:setup": "bash docker/supabase/setup.sh",
+    "db:up": "bash docker/supabase/manage.sh start",
+    "db:down": "bash docker/supabase/manage.sh stop",
+    "db:status": "bash docker/supabase/manage.sh status",
+    "db:backup": "bash docker/supabase/manage.sh backup",
+    "deploy": "bash build.sh --start",
+    "deploy:dev": "bash build.sh --dev"
   }
 }

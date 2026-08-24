@@ -13,11 +13,19 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  fullName: text("full_name"),
-  phone: varchar("phone", { length: 256 }),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: serial("id").primaryKey(),
+    username: varchar("username", { length: 256 }),
+    passwordHash: text("password_hash"),
+    fullName: text("full_name"),
+    phone: varchar("phone", { length: 256 }),
+    isAdmin: boolean("is_admin").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("users_username_unique").on(t.username)],
+);
 
 export const estados = pgTable("estados", {
   id: serial("id").primaryKey(),

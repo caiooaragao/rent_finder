@@ -1,0 +1,5 @@
+# Instalação gerada pelo setup.sh — não versionar segredos nem dados
+project/
+.env
+.env.old
+.supabase-version

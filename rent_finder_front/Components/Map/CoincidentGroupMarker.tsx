@@ -82,6 +82,8 @@ export type CoincidentGroupMarkerProps = {
   lng: number;
   listings: OlxListing[];
   stableId: string;
+  /** Se false, não monta `Popup` — o pai pode mostrar o mesmo conteúdo noutro sítio. */
+  hoverPopupsEnabled?: boolean;
   /** Handlers já memoizados pelo pai (espelha `LeafPriceMarker`). */
   popupHoverHandlers: L.LeafletEventHandlerFnMap;
   onEnter: (target: L.Marker, lat: number, lng: number) => void;
@@ -94,6 +96,7 @@ const CoincidentGroupMarker = React.memo(function CoincidentGroupMarker({
   lng,
   listings,
   popupHoverHandlers,
+  hoverPopupsEnabled = true,
   onEnter,
   onLeave,
   onClick,
@@ -122,15 +125,17 @@ const CoincidentGroupMarker = React.memo(function CoincidentGroupMarker({
         — o do Leaflet e o do `<ul>` interno (`max-h-[14rem]`). Confiamos só no scroll
         interno, que tem estilo coerente com o resto da aplicação.
       */}
-      <Popup
-        maxWidth={320}
-        autoPan={false}
-        closeOnClick
-        interactive
-        eventHandlers={popupHoverHandlers}
-      >
-        <CoincidentGroupPopupContent listings={listings} lat={lat} lng={lng} />
-      </Popup>
+      {hoverPopupsEnabled ? (
+        <Popup
+          maxWidth={320}
+          autoPan={false}
+          closeOnClick
+          interactive
+          eventHandlers={popupHoverHandlers}
+        >
+          <CoincidentGroupPopupContent listings={listings} lat={lat} lng={lng} />
+        </Popup>
+      ) : null}
     </Marker>
   );
 });

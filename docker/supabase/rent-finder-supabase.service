@@ -1,0 +1,23 @@
+# Template systemd para iniciar Supabase após reboot do servidor.
+# Ajuste WorkingDirectory e User antes de instalar.
+#
+# sudo cp rent-finder-supabase.service /etc/systemd/system/
+# sudo systemctl daemon-reload
+# sudo systemctl enable --now rent-finder-supabase
+
+[Unit]
+Description=Rent Finder Supabase (Docker Compose)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/rent-finder/supabase
+ExecStart=/usr/bin/docker compose up -d --wait
+ExecStop=/usr/bin/docker compose down
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

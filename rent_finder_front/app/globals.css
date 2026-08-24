@@ -35,6 +35,23 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Painel à direita (detalhe do mapa sem popups de hover): entrada/saída em slide. */
+.rf-map-hover-detail-panel {
+  transform: translateX(100%);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 280ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 220ms ease;
+  will-change: transform;
+}
+
+.rf-map-hover-detail-panel[data-open="true"] {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
 /* Etiqueta de preço como marcador (OlxSuperclusterLayer): o próprio wrapper do divIcon é a etiqueta visível.
  * Posicionamento: o Leaflet aplica `transform: translate3d(x, y, 0)` para colocar o wrapper no lat/lng;
  * a propriedade CSS `translate` (independente do `transform`) compõe-se por cima e desloca a base
@@ -379,6 +396,10 @@ body {
   .olx-coincident-group-pulse {
     animation: none;
     box-shadow: 0 0 0 1px var(--rf-coincident-group-pulse-min);
+  }
+
+  .rf-map-hover-detail-panel {
+    transition-duration: 0.01ms;
   }
 }
 

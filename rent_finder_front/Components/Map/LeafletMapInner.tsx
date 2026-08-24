@@ -55,6 +55,11 @@ export interface LeafletMapInnerProps {
   priceRange?: PriceRangeFilter | null;
   /** Fundo do mapa (controlado pela sidebar) */
   basemap?: MapBasemap;
+  /**
+   * Quando `false`, os popups Leaflet ao passar o rato ficam desativados e o detalhe
+   * aparece num painel fixo à direita (ver `OlxSuperclusterLayer`).
+   */
+  hoverPopupsEnabled?: boolean;
 }
 
 const DEFAULT_CENTER: LatLngExpression = [-8.0476, -34.877];
@@ -150,6 +155,7 @@ export default function LeafletMapInner({
   searchHoveredBairro = null,
   priceRange = null,
   basemap = "streets",
+  hoverPopupsEnabled = true,
 }: LeafletMapInnerProps) {
   useFixLeafletDefaultIcon();
   const mapWrapRef = React.useRef<HTMLDivElement>(null);
@@ -246,7 +252,10 @@ export default function LeafletMapInner({
         )}
         <ZoomControl position="bottomright" />
 
-        <OlxSuperclusterLayer points={olxPoints} />
+        <OlxSuperclusterLayer
+          points={olxPoints}
+          hoverPopupsEnabled={hoverPopupsEnabled}
+        />
 
         <SearchHoveredBairroPolygon location={searchHoveredBairro} />
         <SelectedSearchPlacePolygon

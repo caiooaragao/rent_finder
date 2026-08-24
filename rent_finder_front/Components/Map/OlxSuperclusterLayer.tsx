@@ -28,10 +28,13 @@ import type { OlxListing } from "@/types/olx";
 import type { Feature, Point, GeoJsonObject } from "geojson";
 import { fetchBairroPolygon } from "@/lib/fetchBairroPolygon";
 import { googleStreetViewUrl } from "@/lib/googleStreetViewUrl";
-import OlxClusterPopupContent from "./OlxClusterPopupContent";
+import OlxClusterPopupContent, {
+  type OlxClusterPopupLeaf,
+} from "./OlxClusterPopupContent";
 import BairroPolygonOverlay from "./BairroPolygonOverlay";
 import PinHoverCircleOverlay from "./PinHoverCircleOverlay";
 import CoincidentGroupMarker from "./CoincidentGroupMarker";
+import CoincidentGroupPopupContent from "./CoincidentGroupPopupContent";
 
 /**
  * Ponto exibido no mapa: união discriminada por `type`.
@@ -196,6 +199,89 @@ function injectClusterPulseKeyframes(): void {
 }
 
 injectClusterPulseKeyframes();
+
+type MapHoverDetailState =
+  | {
+      kind: "cluster";
+      pointCount: number;
+      leaves: OlxClusterPopupLeaf[];
+      lat: number;
+      lng: number;
+      expansionZoom: number;
+    }
+  | {
+      kind: "group";
+      listings: OlxListing[];
+      lat: number;
+      lng: number;
+      stableId: string;
+    }
+  | {
+      kind: "single";
+      listing: OlxListing;
+      stableId: string;
+      lat: number;
+      lng: number;
+      isBairro: boolean;
+    };
+
+function SingleListingMapPopupContent({
+  listing,
+  lat,
+  lng,
+  isBairro,
+  bairroIsLoading,
+}: {
+  listing: OlxListing;
+  lat: number;
+  lng: number;
+  isBairro: boolean;
+  bairroIsLoading: boolean;
+}) {
+  return (
+    <div className="space-y-1 text-sm text-foreground">
+      <p className="m-0 font-semibold leading-snug">{listing.titulo}</p>
+      <p className="m-0 text-listing-price">{listing.preco}</p>
+      {listing.endereco ? (
+        <p className="m-0 text-xs text-listing-muted">{listing.endereco}</p>
+      ) : null}
+      {isBairro && listing.bairro ? (
+        <p className="m-0 text-xs text-listing-amber">
+          Localização aproximada: {listing.bairro}
+          {bairroIsLoading ? " (carregando contorno…)" : ""}
+        </p>
+      ) : null}
+      {listing.link || !isBairro ? (
+        <footer className="mt-1.5 flex flex-wrap items-center justify-end gap-x-2 gap-y-1 border-t border-[var(--rf-cluster-popup-footer-border)] pt-1.5">
+          {listing.link ? (
+            <a
+              href={listing.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Abrir este anúncio no OLX"
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--rf-cluster-popup-btn-border)] bg-[var(--rf-cluster-popup-btn-bg)] px-2 py-0.5 text-[0.6875rem] font-semibold text-[var(--rf-cluster-popup-btn-fg)] no-underline shadow-none transition-colors duration-150 hover:border-[var(--rf-cluster-popup-btn-hover-border)] hover:bg-[var(--rf-cluster-popup-btn-hover-bg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--rf-cluster-popup-btn-fg)]"
+            >
+              <OpenInNewOutlined sx={{ fontSize: 14 }} aria-hidden />
+              Ver no OLX
+            </a>
+          ) : null}
+          {!isBairro ? (
+            <a
+              href={googleStreetViewUrl(lat, lng)}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Abrir esta localização no Google Street View"
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--rf-cluster-popup-btn-border)] bg-[var(--rf-cluster-popup-btn-bg)] px-2 py-0.5 text-[0.6875rem] font-semibold text-[var(--rf-cluster-popup-btn-fg)] no-underline shadow-none transition-colors duration-150 hover:border-[var(--rf-cluster-popup-btn-hover-border)] hover:bg-[var(--rf-cluster-popup-btn-hover-bg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--rf-cluster-popup-btn-fg)]"
+            >
+              <StreetviewOutlined sx={{ fontSize: 14 }} aria-hidden />
+              Abrir no Street View
+            </a>
+          ) : null}
+        </footer>
+      ) : null}
+    </div>
+  );
+}
 
 /**
  * Após mudar `points`, o estado `clusters` pode ainda vir do índice anterior;
@@ -388,18 +474,19 @@ type LeafPriceMarkerProps = {
   isBairro: boolean;
   /** True só na folha cujo bairro está a ser carregado (mostra "carregando contorno…"). */
   bairroIsLoading: boolean;
+  hoverPopupsEnabled: boolean;
   /** Estes callbacks vêm do pai memoizados (`useCallback`); o `useMemo` interno depende deles. */
   popupHoverHandlers: L.LeafletEventHandlerFnMap;
-  onLeafEnter: (target: L.Marker, lat: number, lng: number) => void;
-  onLeafLeave: () => void;
-  onLeafClick: (lat: number, lng: number) => void;
-  onBairroLeafEnter: (
-    listing: OlxListing,
-    stableId: string,
-    target: L.Marker,
+  onPriceMarkerHover: (
+    marker: L.Marker,
     lat: number,
     lng: number,
+    listing: OlxListing,
+    stableId: string,
+    isBairro: boolean,
   ) => void;
+  onLeafLeave: () => void;
+  onLeafClick: (lat: number, lng: number) => void;
   onBairroLeafLeave: () => void;
 };
 
@@ -410,30 +497,29 @@ const LeafPriceMarker = React.memo(function LeafPriceMarker({
   lng,
   isBairro,
   bairroIsLoading,
+  hoverPopupsEnabled,
   popupHoverHandlers,
-  onLeafEnter,
+  onPriceMarkerHover,
   onLeafLeave,
   onLeafClick,
-  onBairroLeafEnter,
   onBairroLeafLeave,
 }: LeafPriceMarkerProps) {
   const precoLabel = listing.preco?.trim() ? listing.preco : "—";
 
   const eventHandlers = React.useMemo<L.LeafletEventHandlerFnMap>(() => {
-    if (isBairro) {
-      return {
-        mouseover: (e: L.LeafletMouseEvent) => {
-          onBairroLeafEnter(listing, stableId, e.target as L.Marker, lat, lng);
-        },
-        mouseout: onBairroLeafLeave,
-        click: () => onLeafClick(lat, lng),
-      };
-    }
+    const hover = (e: L.LeafletMouseEvent) => {
+      onPriceMarkerHover(
+        e.target as L.Marker,
+        lat,
+        lng,
+        listing,
+        stableId,
+        isBairro,
+      );
+    };
     return {
-      mouseover: (e: L.LeafletMouseEvent) => {
-        onLeafEnter(e.target as L.Marker, lat, lng);
-      },
-      mouseout: onLeafLeave,
+      mouseover: hover,
+      mouseout: isBairro ? onBairroLeafLeave : onLeafLeave,
       click: () => onLeafClick(lat, lng),
     };
   }, [
@@ -442,10 +528,9 @@ const LeafPriceMarker = React.memo(function LeafPriceMarker({
     stableId,
     lat,
     lng,
-    onLeafEnter,
+    onPriceMarkerHover,
     onLeafLeave,
     onLeafClick,
-    onBairroLeafEnter,
     onBairroLeafLeave,
   ]);
 
@@ -456,82 +541,39 @@ const LeafPriceMarker = React.memo(function LeafPriceMarker({
       riseOnHover
       eventHandlers={eventHandlers}
     >
-      {/*
-        `interactive` no Popup é essencial: sem isto, o `L.DivOverlay._initInteraction`
-        não regista listeners e os `popupHoverHandlers` (mouseover/mouseout) NUNCA disparam
-        no popup. Resultado: ao mover o cursor da etiqueta para o popup, só o `:hover`
-        fallback (`isPointerOverPopupMarkerOrTooltip`) impede o fecho — e só após 350 ms.
-      */}
-      <Popup
-        maxWidth={280}
-        autoPan={false}
-        closeOnClick
-        interactive
-        eventHandlers={popupHoverHandlers}
-      >
-        <div className="space-y-1 text-sm text-foreground">
-          <p className="m-0 font-semibold leading-snug">{listing.titulo}</p>
-          <p className="m-0 text-listing-price">{listing.preco}</p>
-          {listing.endereco ? (
-            <p className="m-0 text-xs text-listing-muted">{listing.endereco}</p>
-          ) : null}
-          {isBairro && listing.bairro ? (
-            <p className="m-0 text-xs text-listing-amber">
-              Localização aproximada: {listing.bairro}
-              {bairroIsLoading ? " (carregando contorno…)" : ""}
-            </p>
-          ) : null}
-          {/*
-            Rodapé com botões em estilo sólido reutilizando os tokens
-            `--rf-cluster-popup-btn-*` — espelha o botão "Abrir no Street View" do
-            `CoincidentGroupPopupContent`, mantendo a mesma afordância visual entre os
-            popups de anúncio único e de coordenada coincidente.
-
-            Street View aparece **apenas** para anúncios com coordenada exata (`!isBairro`):
-            num pin amarelo (só bairro) o ponto é o centróide do bairro e abrir o Street View
-            ali levaria o utilizador a um local arbitrário.
-
-            `flex-wrap` permite que os dois botões quebrem para a próxima linha em popups
-            estreitos sem layout shift quando o botão Street View **não** é renderizado.
-          */}
-          {listing.link || !isBairro ? (
-            <footer className="mt-1.5 flex flex-wrap items-center justify-end gap-x-2 gap-y-1 border-t border-[var(--rf-cluster-popup-footer-border)] pt-1.5">
-              {listing.link ? (
-                <a
-                  href={listing.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Abrir este anúncio no OLX"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--rf-cluster-popup-btn-border)] bg-[var(--rf-cluster-popup-btn-bg)] px-2 py-0.5 text-[0.6875rem] font-semibold text-[var(--rf-cluster-popup-btn-fg)] no-underline shadow-none transition-colors duration-150 hover:border-[var(--rf-cluster-popup-btn-hover-border)] hover:bg-[var(--rf-cluster-popup-btn-hover-bg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--rf-cluster-popup-btn-fg)]"
-                >
-                  <OpenInNewOutlined sx={{ fontSize: 14 }} aria-hidden />
-                  Ver no OLX
-                </a>
-              ) : null}
-              {!isBairro ? (
-                <a
-                  href={googleStreetViewUrl(lat, lng)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Abrir esta localização no Google Street View"
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[var(--rf-cluster-popup-btn-border)] bg-[var(--rf-cluster-popup-btn-bg)] px-2 py-0.5 text-[0.6875rem] font-semibold text-[var(--rf-cluster-popup-btn-fg)] no-underline shadow-none transition-colors duration-150 hover:border-[var(--rf-cluster-popup-btn-hover-border)] hover:bg-[var(--rf-cluster-popup-btn-hover-bg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--rf-cluster-popup-btn-fg)]"
-                >
-                  <StreetviewOutlined sx={{ fontSize: 14 }} aria-hidden />
-                  Abrir no Street View
-                </a>
-              ) : null}
-            </footer>
-          ) : null}
-        </div>
-      </Popup>
+      {hoverPopupsEnabled ? (
+        /*
+          `interactive` no Popup é essencial: sem isto, o `L.DivOverlay._initInteraction`
+          não regista listeners e os `popupHoverHandlers` (mouseover/mouseout) NUNCA disparam
+          no popup. Resultado: ao mover o cursor da etiqueta para o popup, só o `:hover`
+          fallback (`isPointerOverPopupMarkerOrTooltip`) impede o fecho — e só após 350 ms.
+        */
+        <Popup
+          maxWidth={280}
+          autoPan={false}
+          closeOnClick
+          interactive
+          eventHandlers={popupHoverHandlers}
+        >
+          <SingleListingMapPopupContent
+            listing={listing}
+            lat={lat}
+            lng={lng}
+            isBairro={isBairro}
+            bairroIsLoading={bairroIsLoading}
+          />
+        </Popup>
+      ) : null}
     </Marker>
   );
 });
 
 export default function OlxSuperclusterLayer({
   points,
+  hoverPopupsEnabled = true,
 }: {
   points: OlxMapPoint[];
+  hoverPopupsEnabled?: boolean;
 }) {
   const map = useMap();
   /** Quando true, `getClusters` usa zoom de folhas → sem círculos de agregação. */
@@ -554,7 +596,60 @@ export default function OlxSuperclusterLayer({
     lng: number;
   } | null>(null);
 
-  /** Timer do schedulePinLeave (fechar popup + limpar halo). */
+  /** Detalhe ao hover quando `hoverPopupsEnabled` é false — mesmo conteúdo que os popups Leaflet. */
+  const [hoverPanel, setHoverPanel] = React.useState<MapHoverDetailState | null>(null);
+  /** Permite mover o rato do pin para o painel sem fechar (espelha o fluxo do popup). */
+  const pointerOverDetailPanelRef = React.useRef(false);
+
+  /** Conteúdo do painel direito + estado visível para animar slide sem desmontar no primeiro frame. */
+  const [panelBody, setPanelBody] = React.useState<MapHoverDetailState | null>(null);
+  const [panelOpen, setPanelOpen] = React.useState(false);
+  const panelEverOpenedRef = React.useRef(false);
+
+  React.useLayoutEffect(() => {
+    if (hoverPopupsEnabled) {
+      setPanelOpen(false);
+      return;
+    }
+    if (hoverPanel) {
+      setPanelBody(hoverPanel);
+      if (!panelEverOpenedRef.current) {
+        setPanelOpen(false);
+        const id = requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            setPanelOpen(true);
+            panelEverOpenedRef.current = true;
+          }),
+        );
+        return () => cancelAnimationFrame(id);
+      }
+      setPanelOpen(true);
+      return;
+    }
+    if (panelBody) {
+      setPanelOpen(false);
+    }
+  }, [hoverPopupsEnabled, hoverPanel, panelBody]);
+
+  const onPanelTransitionEnd = React.useCallback(
+    (e: React.TransitionEvent<HTMLDivElement>) => {
+      if (e.propertyName !== "transform") return;
+      const open = e.currentTarget.getAttribute("data-open") === "true";
+      if (open) return;
+      if (hoverPopupsEnabled) {
+        setPanelBody(null);
+        panelEverOpenedRef.current = false;
+        return;
+      }
+      if (hoverPanel === null) {
+        setPanelBody(null);
+        panelEverOpenedRef.current = false;
+      }
+    },
+    [hoverPopupsEnabled, hoverPanel],
+  );
+
+  /** Timer do scheduleMarkerHoverLeave (fechar popup ou painel + limpar halo). */
   const leaveTimerRef = React.useRef<number | null>(null);
   /** stableId do pin amarelo em hover; fetch só aplica se ainda for o mesmo alvo. */
   const bairroHoverTargetRef = React.useRef<string | null>(null);
@@ -576,25 +671,40 @@ export default function OlxSuperclusterLayer({
   }, []);
 
   /**
-   * Agenda fecho do popup se, após HOVER_LEAVE_MS, o rato não estiver sobre UI Leaflet relevante.
-   * Faz duas verificações: a primeira ao fim do timer, a segunda 120 ms depois; se em qualquer
-   * uma delas o cursor estiver sobre popup/marker/tooltip, cancela o fecho.
+   * Agenda fecho do popup ou do painel lateral se, após HOVER_LEAVE_MS, o rato não estiver
+   * sobre marcador, popup Leaflet ou painel (`pointerOverDetailPanelRef`).
    */
-  const schedulePinLeave = React.useCallback(() => {
+  const shouldDeferHoverLeave = React.useCallback(() => {
+    if (isPointerOverPopupMarkerOrTooltip(map)) return true;
+    if (!hoverPopupsEnabled && pointerOverDetailPanelRef.current) return true;
+    return false;
+  }, [map, hoverPopupsEnabled]);
+
+  const scheduleMarkerHoverLeave = React.useCallback(() => {
     if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
     leaveTimerRef.current = window.setTimeout(() => {
-      if (isPointerOverPopupMarkerOrTooltip(map)) {
+      if (shouldDeferHoverLeave()) {
         leaveTimerRef.current = null;
         return;
       }
       leaveTimerRef.current = window.setTimeout(() => {
         leaveTimerRef.current = null;
-        if (isPointerOverPopupMarkerOrTooltip(map)) return;
-        map.closePopup();
+        if (shouldDeferHoverLeave()) return;
+        if (hoverPopupsEnabled) {
+          map.closePopup();
+        } else {
+          setHoverPanel(null);
+        }
         setHoverPinCircle(null);
       }, 120);
     }, HOVER_LEAVE_MS);
-  }, [map]);
+  }, [map, hoverPopupsEnabled, shouldDeferHoverLeave]);
+
+  React.useEffect(() => {
+    map.closePopup();
+    setHoverPanel(null);
+    pointerOverDetailPanelRef.current = false;
+  }, [hoverPopupsEnabled, map]);
 
   React.useEffect(
     () => () => {
@@ -616,6 +726,7 @@ export default function OlxSuperclusterLayer({
       deferredClear = window.setTimeout(() => {
         deferredClear = null;
         if (mapHasVisiblePopupLayer(map)) return;
+        setHoverPanel(null);
         setBairroGeoJson(null);
         bairroHoverTargetRef.current = null;
         setActiveBairroStableId(null);
@@ -633,9 +744,9 @@ export default function OlxSuperclusterLayer({
   const popupHoverHandlers = React.useMemo(
     () => ({
       mouseover: cancelPinLeave,
-      mouseout: schedulePinLeave,
+      mouseout: scheduleMarkerHoverLeave,
     }),
-    [cancelPinLeave, schedulePinLeave],
+    [cancelPinLeave, scheduleMarkerHoverLeave],
   );
 
   /**
@@ -654,24 +765,72 @@ export default function OlxSuperclusterLayer({
     [map],
   );
 
-  /**
-   * Handlers estáveis para `LeafPriceMarker` (memoizado). Inline arrow functions criariam
-   * referências novas a cada render do pai, fazendo o `React.memo` falhar e o popup
-   * `update()` re-disparar — exatamente o piscar que estamos a evitar.
-   */
-  const onLeafEnter = React.useCallback(
-    (target: L.Marker, lat: number, lng: number) => {
+  const handlePriceMarkerHover = React.useCallback(
+    (
+      marker: L.Marker,
+      lat: number,
+      lng: number,
+      listing: OlxListing,
+      stableId: string,
+      isBairro: boolean,
+    ) => {
       cancelPinLeave();
       setHoverPinCircle({ lat, lng });
-      clearBairroHoverState();
-      if (!target.isPopupOpen()) target.openPopup();
+      if (isBairro) {
+        bairroHoverTargetRef.current = stableId;
+        setActiveBairroStableId(stableId);
+        setBairroGeoJson(null);
+        setLoadingBairro(true);
+        void fetchBairroPolygon(
+          listing.bairro,
+          listing.cidade,
+          listing.estado,
+          listing.endereco,
+        )
+          .then((geojson) => {
+            if (bairroHoverTargetRef.current !== stableId) return;
+            setBairroGeoJson(geojson);
+            setLoadingBairro(false);
+          })
+          .catch(() => {
+            if (bairroHoverTargetRef.current !== stableId) return;
+            setBairroGeoJson(null);
+            setLoadingBairro(false);
+          });
+        if (hoverPopupsEnabled) {
+          if (!marker.isPopupOpen()) marker.openPopup();
+        } else {
+          setHoverPanel({
+            kind: "single",
+            listing,
+            stableId,
+            lat,
+            lng,
+            isBairro: true,
+          });
+        }
+      } else {
+        clearBairroHoverState();
+        if (hoverPopupsEnabled) {
+          if (!marker.isPopupOpen()) marker.openPopup();
+        } else {
+          setHoverPanel({
+            kind: "single",
+            listing,
+            stableId,
+            lat,
+            lng,
+            isBairro: false,
+          });
+        }
+      }
     },
-    [cancelPinLeave, clearBairroHoverState],
+    [cancelPinLeave, clearBairroHoverState, hoverPopupsEnabled],
   );
 
   const onLeafLeave = React.useCallback(() => {
-    schedulePinLeave();
-  }, [schedulePinLeave]);
+    scheduleMarkerHoverLeave();
+  }, [scheduleMarkerHoverLeave]);
 
   const onLeafClick = React.useCallback(
     (lat: number, lng: number) => {
@@ -682,38 +841,8 @@ export default function OlxSuperclusterLayer({
 
   const onBairroLeafLeave = React.useCallback(() => {
     clearBairroHoverState();
-    schedulePinLeave();
-  }, [clearBairroHoverState, schedulePinLeave]);
-
-  /** Pin amarelo: abre popup, pede contorno do bairro e associa estados ao stableId. */
-  const onBairroMarkerEnter = React.useCallback(
-    (listing: OlxListing, stableId: string, marker: L.Marker, lat: number, lng: number) => {
-      cancelPinLeave();
-      setHoverPinCircle({ lat, lng });
-      bairroHoverTargetRef.current = stableId;
-      setActiveBairroStableId(stableId);
-      if (!marker.isPopupOpen()) marker.openPopup();
-      setBairroGeoJson(null);
-      setLoadingBairro(true);
-      void fetchBairroPolygon(
-          listing.bairro,
-          listing.cidade,
-          listing.estado,
-          listing.endereco,
-        )
-        .then((geojson) => {
-          if (bairroHoverTargetRef.current !== stableId) return;
-          setBairroGeoJson(geojson);
-          setLoadingBairro(false);
-        })
-        .catch(() => {
-          if (bairroHoverTargetRef.current !== stableId) return;
-          setBairroGeoJson(null);
-          setLoadingBairro(false);
-        });
-    },
-    [cancelPinLeave],
-  );
+    scheduleMarkerHoverLeave();
+  }, [clearBairroHoverState, scheduleMarkerHoverLeave]);
 
   /**
    * Índice espacial dos pontos; recalcula quando `points` muda (filtros, dados).
@@ -964,10 +1093,21 @@ export default function OlxSuperclusterLayer({
                   cancelPinLeave();
                   setHoverPinCircle({ lat, lng });
                   clearBairroHoverState();
-                  e.target.openPopup();
+                  if (hoverPopupsEnabled) {
+                    e.target.openPopup();
+                  } else {
+                    setHoverPanel({
+                      kind: "cluster",
+                      pointCount: totalAds,
+                      leaves: popupLeaves,
+                      lat,
+                      lng,
+                      expansionZoom,
+                    });
+                  }
                 },
                 mouseout: () => {
-                  schedulePinLeave();
+                  scheduleMarkerHoverLeave();
                 },
                 click: () => {
                   panMapToPin(lat, lng);
@@ -980,32 +1120,34 @@ export default function OlxSuperclusterLayer({
                 o Leaflet adicionaria o seu próprio wrapper rolável e ficariam dois
                 scrollbars empilhados (ver mesma estratégia em `CoincidentGroupMarker`).
               */}
-              <Popup
-                maxWidth={320}
-                autoPan={false}
-                closeOnClick
-                eventHandlers={popupHoverHandlers}
-              >
-                <OlxClusterPopupContent
-                  pointCount={totalAds}
-                  leaves={popupLeaves}
-                  onAmpliarMapa={() => {
-                    cancelPinLeave();
-                    setHoverPinCircle(null);
-                    map.setView([lat, lng], expansionZoom);
-                  }}
-                  onZoomParaAnuncio={(leafLat, leafLng) => {
-                    cancelPinLeave();
-                    setHoverPinCircle(null);
-                    map.closePopup();
-                    const z = Math.min(
-                      SUPERCLUSTER_LEAF_ZOOM,
-                      map.getMaxZoom(),
-                    );
-                    map.flyTo([leafLat, leafLng], z, { duration: 0.55 });
-                  }}
-                />
-              </Popup>
+              {hoverPopupsEnabled ? (
+                <Popup
+                  maxWidth={320}
+                  autoPan={false}
+                  closeOnClick
+                  eventHandlers={popupHoverHandlers}
+                >
+                  <OlxClusterPopupContent
+                    pointCount={totalAds}
+                    leaves={popupLeaves}
+                    onAmpliarMapa={() => {
+                      cancelPinLeave();
+                      setHoverPinCircle(null);
+                      map.setView([lat, lng], expansionZoom);
+                    }}
+                    onZoomParaAnuncio={(leafLat, leafLng) => {
+                      cancelPinLeave();
+                      setHoverPinCircle(null);
+                      map.closePopup();
+                      const z = Math.min(
+                        SUPERCLUSTER_LEAF_ZOOM,
+                        map.getMaxZoom(),
+                      );
+                      map.flyTo([leafLat, leafLng], z, { duration: 0.55 });
+                    }}
+                  />
+                </Popup>
+              ) : null}
             </Marker>
           );
         }
@@ -1020,8 +1162,24 @@ export default function OlxSuperclusterLayer({
               lng={lng}
               listings={props.listings}
               stableId={props.stableId}
+              hoverPopupsEnabled={hoverPopupsEnabled}
               popupHoverHandlers={popupHoverHandlers}
-              onEnter={onLeafEnter}
+              onEnter={(target, enterLat, enterLng) => {
+                cancelPinLeave();
+                setHoverPinCircle({ lat: enterLat, lng: enterLng });
+                clearBairroHoverState();
+                if (hoverPopupsEnabled) {
+                  if (!target.isPopupOpen()) target.openPopup();
+                } else {
+                  setHoverPanel({
+                    kind: "group",
+                    listings: props.listings,
+                    lat: enterLat,
+                    lng: enterLng,
+                    stableId: props.stableId,
+                  });
+                }
+              }}
               onLeave={onLeafLeave}
               onClick={onLeafClick}
             />
@@ -1039,14 +1197,14 @@ export default function OlxSuperclusterLayer({
             lat={lat}
             lng={lng}
             isBairro={isBairro}
+            hoverPopupsEnabled={hoverPopupsEnabled}
             bairroIsLoading={
               isBairro && loadingBairro && activeBairroStableId === stableId
             }
             popupHoverHandlers={popupHoverHandlers}
-            onLeafEnter={onLeafEnter}
+            onPriceMarkerHover={handlePriceMarkerHover}
             onLeafLeave={onLeafLeave}
             onLeafClick={onLeafClick}
-            onBairroLeafEnter={onBairroMarkerEnter}
             onBairroLeafLeave={onBairroLeafLeave}
           />
         );
@@ -1056,6 +1214,76 @@ export default function OlxSuperclusterLayer({
       <PinHoverCircleOverlay center={hoverPinCircle} />
 
       <BairroPolygonOverlay geojson={bairroGeoJson} />
+
+      {typeof document !== "undefined" &&
+        createPortal(
+          panelBody ? (
+            <div
+              id="rf-map-hover-detail"
+              role="complementary"
+              aria-label="Detalhe do elemento no mapa"
+              aria-hidden={!panelOpen}
+              data-open={panelOpen ? "true" : "false"}
+              className="rf-map-hover-detail-panel fixed top-0 right-0 z-[2000] flex h-full w-[min(100vw,320px)] flex-col border-l border-[var(--rf-search-dropdown-border)] bg-[var(--rf-popup-bg)] shadow-[var(--rf-shadow-dropdown)]"
+              onMouseEnter={() => {
+                pointerOverDetailPanelRef.current = true;
+                cancelPinLeave();
+              }}
+              onMouseLeave={() => {
+                pointerOverDetailPanelRef.current = false;
+                scheduleMarkerHoverLeave();
+              }}
+              onTransitionEnd={onPanelTransitionEnd}
+            >
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 [scrollbar-width:thin]">
+                {panelBody.kind === "cluster" ? (
+                  <OlxClusterPopupContent
+                    pointCount={panelBody.pointCount}
+                    leaves={panelBody.leaves}
+                    onAmpliarMapa={() => {
+                      cancelPinLeave();
+                      setHoverPinCircle(null);
+                      setHoverPanel(null);
+                      map.setView(
+                        [panelBody.lat, panelBody.lng],
+                        panelBody.expansionZoom,
+                      );
+                    }}
+                    onZoomParaAnuncio={(leafLat, leafLng) => {
+                      cancelPinLeave();
+                      setHoverPinCircle(null);
+                      setHoverPanel(null);
+                      const z = Math.min(
+                        SUPERCLUSTER_LEAF_ZOOM,
+                        map.getMaxZoom(),
+                      );
+                      map.flyTo([leafLat, leafLng], z, { duration: 0.55 });
+                    }}
+                  />
+                ) : panelBody.kind === "group" ? (
+                  <CoincidentGroupPopupContent
+                    listings={panelBody.listings}
+                    lat={panelBody.lat}
+                    lng={panelBody.lng}
+                  />
+                ) : (
+                  <SingleListingMapPopupContent
+                    listing={panelBody.listing}
+                    lat={panelBody.lat}
+                    lng={panelBody.lng}
+                    isBairro={panelBody.isBairro}
+                    bairroIsLoading={
+                      panelBody.isBairro &&
+                      loadingBairro &&
+                      activeBairroStableId === panelBody.stableId
+                    }
+                  />
+                )}
+              </div>
+            </div>
+          ) : null,
+          document.body,
+        )}
     </>
   );
 }

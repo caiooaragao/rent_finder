@@ -1,5 +1,5 @@
 /**
- * Mostrado quando `DATABASE_URL` não está definida no runtime (ex.: Vercel sem env).
+ * Mostrado quando `DATABASE_URL` não está definida no runtime.
  */
 export default function DatabaseNotConfigured() {
   return (
@@ -15,19 +15,19 @@ export default function DatabaseNotConfigured() {
         Base de dados não configurada
       </h1>
       <p style={{ marginBottom: "1rem", color: "var(--foreground-muted, #666)" }}>
-        No projeto Vercel, adiciona a variável de ambiente{" "}
-        <code style={{ fontSize: "0.9em" }}>DATABASE_URL</code> (Production e,
-        se quiseres, Preview) com a connection string do Supabase Postgres.
+        Defina a variável de ambiente{" "}
+        <code style={{ fontSize: "0.9em" }}>DATABASE_URL</code> com a connection
+        string do Postgres (Supabase self-hosted ou cloud).
       </p>
       <p style={{ marginBottom: "1rem", color: "var(--foreground-muted, #666)" }}>
-        Para serverless, usa normalmente o{" "}
-        <strong>connection pooling</strong> (porta <code>6543</code>, modo
-        transaction), não a ligação direta à porta <code>5432</code>, se a
-        região/Vercel tiver problemas de rede.
+        Self-hosted: após <code>npm run db:setup</code>, copie{" "}
+        <code>docker/supabase/.env.generated</code> para{" "}
+        <code>rent_finder_front/.env.local</code>. Use o pooler na porta{" "}
+        <code>6543</code> (modo transaction).
       </p>
       <p style={{ fontSize: "0.9rem" }}>
-        Settings → Environment Variables → <code>DATABASE_URL</code> →
-        Redeploy.
+        Ver <code>docker/supabase/README.md</code> e{" "}
+        <code>rent_finder_front/.env.example</code>.
       </p>
     </main>
   );

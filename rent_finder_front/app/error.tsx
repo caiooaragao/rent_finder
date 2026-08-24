@@ -34,8 +34,9 @@ export default function ErrorPage({
       {likelyDb ? (
         <p style={{ marginBottom: "1rem" }}>
           Falha ao ligar à base de dados. Confirma{" "}
-          <code>DATABASE_URL</code> na Vercel e usa pooler (porta 6543) se
-          necessário. Mensagem:{" "}
+          <code>DATABASE_URL</code> (self-hosted: pooler porta{" "}
+          <code>6543</code>; ver <code>docker/supabase/README.md</code>).
+          Mensagem:{" "}
           <code style={{ fontSize: "0.85em", wordBreak: "break-all" }}>
             {msg}
           </code>

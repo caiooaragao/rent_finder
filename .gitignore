@@ -37,6 +37,11 @@ yarn-error.log*
 # Vercel
 .vercel/
 
+# Supabase self-hosted (gerado localmente)
+docker/supabase/project/
+docker/supabase/.env.generated
+docker/supabase/backups/
+
 # Fragmentos / cópias locais do scrape (o ficheiro principal pode ficar versionado)
 rent_finder_scraper/olx-scrape-[0-9].json
 rent_finder_scraper/olx-scrape.part*.json
