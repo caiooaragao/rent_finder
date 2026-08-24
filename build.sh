@@ -87,7 +87,14 @@ front_port_in_use() {
 pids_listening_on_port() {
   local port="$1"
   local -a found=()
-  local pid line cid
+  local pid cid fuser_out
+
+  if command -v fuser >/dev/null 2>&1; then
+    fuser_out="$(fuser "${port}/tcp" 2>&1 || fuser -n tcp "$port" 2>&1 || true)"
+    while IFS= read -r pid; do
+      [[ -n "$pid" ]] && found+=("$pid")
+    done < <(tr ' ' '\n' <<<"$fuser_out" | grep -E '^[0-9]+$' || true)
+  fi
 
   if command -v lsof >/dev/null 2>&1; then
     while IFS= read -r pid; do
@@ -95,26 +102,28 @@ pids_listening_on_port() {
     done < <(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
   fi
 
-  if command -v fuser >/dev/null 2>&1; then
+  if command -v ss >/dev/null 2>&1; then
     while IFS= read -r pid; do
       [[ -n "$pid" ]] && found+=("$pid")
-    done < <(fuser -n tcp "$port" 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+$' || true)
-  fi
-
-  if command -v ss >/dev/null 2>&1; then
-    while IFS= read -r line; do
-      [[ "$line" == *":$port"* ]] || continue
-      while IFS= read -r pid; do
-        [[ -n "$pid" ]] && found+=("$pid")
-      done < <(sed -n 's/.*pid=\([0-9]*\).*/\1/p' <<<"$line")
-    done < <(ss -ltnpH 2>/dev/null | grep -E ":${port}([^0-9]|$)" || true)
+    done < <(
+      ss -ltnp 2>/dev/null \
+        | grep -E ":${port}([^0-9]|$)" \
+        | grep -oE 'pid=[0-9]+' \
+        | cut -d= -f2 \
+        | sort -u || true
+    )
   fi
 
   if command -v netstat >/dev/null 2>&1; then
-    while IFS= read -r line; do
-      pid="$(awk '{print $NF}' <<<"$line" | sed 's|/[^/]*$||')"
-      [[ "$pid" =~ ^[0-9]+$ ]] && found+=("$pid")
-    done < <(netstat -tlnp 2>/dev/null | grep -E ":${port}([^0-9]|$)" || true)
+    while IFS= read -r pid; do
+      [[ -n "$pid" ]] && found+=("$pid")
+    done < <(
+      netstat -tlnp 2>/dev/null \
+        | grep -E ":${port}([^0-9]|$)" \
+        | awk '{print $NF}' \
+        | sed 's|/[^/]*$||' \
+        | grep -E '^[0-9]+$' || true
+    )
   fi
 
   if command -v docker >/dev/null 2>&1; then
@@ -123,6 +132,12 @@ pids_listening_on_port() {
       pid="$(docker inspect -f '{{.State.Pid}}' "$cid" 2>/dev/null || true)"
       [[ "$pid" =~ ^[0-9]+$ ]] && [[ "$pid" -gt 0 ]] && found+=("$pid")
     done < <(docker_container_ids_on_port "$port")
+  fi
+
+  if command -v pgrep >/dev/null 2>&1; then
+    while IFS= read -r pid; do
+      [[ -n "$pid" ]] && found+=("$pid")
+    done < <(pgrep -f "next-server|next start -p ${port}" 2>/dev/null || true)
   fi
 
   printf '%s\n' "${found[@]}" | sort -u
@@ -148,20 +163,19 @@ docker_container_ids_on_port() {
 
 force_kill_port_listeners() {
   local port="$1"
-
-  if command -v fuser >/dev/null 2>&1; then
-    log "A forçar libertação da porta $port (fuser)..."
-    fuser -k -TERM "${port}/tcp" 2>/dev/null || true
-    sleep 2
-    fuser -k -KILL "${port}/tcp" 2>/dev/null || true
-    return 0
-  fi
-
   local pid
+
   while IFS= read -r pid; do
     [[ -n "$pid" ]] || continue
-    kill -9 "$pid" 2>/dev/null || true
+    log "A encerrar PID $pid na porta $port..."
+    kill_pid_gracefully "$pid"
   done < <(pids_listening_on_port "$port")
+
+  if command -v fuser >/dev/null 2>&1; then
+    log "A forçar libertação da porta $port (fuser -k)..."
+    fuser -k "${port}/tcp" 2>/dev/null || fuser -k -n tcp "$port" 2>/dev/null || true
+    sleep 1
+  fi
 }
 
 kill_pid_gracefully() {
