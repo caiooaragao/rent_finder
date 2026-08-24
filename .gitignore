@@ -25,6 +25,9 @@ Thumbs.db
 # Processos em background (build.sh --start / --dev)
 .run/
 
+# Scraper OLX (cookies de sessão curl)
+rent_finder_scraper/.olx-curl-cookies.txt
+
 # Logs & debug
 npm-debug.log*
 yarn-debug.log*
