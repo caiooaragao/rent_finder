@@ -2,10 +2,13 @@
 # Build e deploy completo do Rent Finder.
 # Uso:
 #   ./build.sh              # deps + db + migrate + build
-#   ./build.sh --start      # idem + next start (produção)
-#   ./build.sh --dev        # deps + db + migrate + next dev
+#   ./build.sh --start      # idem + next start em background (porta 5000)
+#   ./build.sh --dev        # deps + db + migrate + next dev em background
+#   ./build.sh --stop       # para o servidor front em background
+#   ./build.sh --status     # estado do servidor front
 #   ./build.sh --skip-db    # sem tocar no Supabase (já a correr)
 #   ./build.sh --scrape     # inclui scrape OLX após migrate
+#   ./build.sh --foreground # com --start/--dev, bloqueia o terminal (comportamento antigo)
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,6 +17,9 @@ SCRAPER_DIR="$ROOT_DIR/rent_finder_scraper"
 SUPABASE_DIR="$ROOT_DIR/docker/supabase"
 ENV_LOCAL="$FRONT_DIR/.env.local"
 ENV_GENERATED="$SUPABASE_DIR/.env.generated"
+RUN_DIR="$ROOT_DIR/.run"
+FRONT_PID_FILE="$RUN_DIR/front.pid"
+FRONT_LOG_FILE="$RUN_DIR/front.log"
 
 SKIP_DB=false
 SKIP_INSTALL=false
@@ -21,6 +27,9 @@ SKIP_MIGRATE=false
 DO_START=false
 DO_DEV=false
 DO_SCRAPE=false
+DO_STOP=false
+DO_STATUS=false
+FOREGROUND=false
 SUPABASE_INSTALL_DIR="${SUPABASE_INSTALL_DIR:-$SUPABASE_DIR/project}"
 
 while [[ $# -gt 0 ]]; do
@@ -31,8 +40,11 @@ while [[ $# -gt 0 ]]; do
     --start) DO_START=true; shift ;;
     --dev) DO_DEV=true; shift ;;
     --scrape) DO_SCRAPE=true; shift ;;
+    --stop) DO_STOP=true; shift ;;
+    --status) DO_STATUS=true; shift ;;
+    --foreground) FOREGROUND=true; shift ;;
     -h | --help)
-      sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -48,6 +60,113 @@ die() { printf 'Erro: %s\n' "$*" >&2; exit 1; }
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "'$1' não encontrado no PATH."
 }
+
+front_pid() {
+  if [[ -f "$FRONT_PID_FILE" ]]; then
+    cat "$FRONT_PID_FILE"
+  fi
+}
+
+front_is_running() {
+  local pid
+  pid="$(front_pid || true)"
+  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
+}
+
+stop_front() {
+  if ! front_is_running; then
+    rm -f "$FRONT_PID_FILE"
+    log "Servidor front não está em execução."
+    return 0
+  fi
+
+  local pid
+  pid="$(front_pid)"
+  log "A parar servidor front (PID $pid)..."
+  kill "$pid" 2>/dev/null || true
+
+  for _ in $(seq 1 15); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      rm -f "$FRONT_PID_FILE"
+      log "Servidor front parado."
+      return 0
+    fi
+    sleep 1
+  done
+
+  log "A forçar encerramento (SIGKILL)..."
+  kill -9 "$pid" 2>/dev/null || true
+  rm -f "$FRONT_PID_FILE"
+  log "Servidor front parado."
+}
+
+status_front() {
+  if front_is_running; then
+    printf 'Servidor front: em execução (PID %s)\n' "$(front_pid)"
+    printf 'Logs: %s\n' "$FRONT_LOG_FILE"
+    if [[ -f "$FRONT_LOG_FILE" ]]; then
+      printf '\nÚltimas linhas do log:\n'
+      tail -n 8 "$FRONT_LOG_FILE" 2>/dev/null || true
+    fi
+  else
+    rm -f "$FRONT_PID_FILE"
+    printf 'Servidor front: parado\n'
+  fi
+}
+
+start_front_background() {
+  local mode="$1"
+  local cmd
+
+  mkdir -p "$RUN_DIR"
+
+  if front_is_running; then
+    die "Servidor front já em execução (PID $(front_pid)). Use ./build.sh --stop"
+  fi
+
+  rm -f "$FRONT_PID_FILE"
+
+  if [[ "$mode" == "dev" ]]; then
+    cmd=(npm run dev)
+    log "A iniciar servidor de desenvolvimento em background (porta 5000)..."
+  else
+    cmd=(npm run start --prefix "$FRONT_DIR")
+    log "A iniciar servidor de produção em background (porta 5000)..."
+  fi
+
+  : >"$FRONT_LOG_FILE"
+  nohup "${cmd[@]}" >>"$FRONT_LOG_FILE" 2>&1 &
+  echo $! >"$FRONT_PID_FILE"
+
+  for _ in $(seq 1 30); do
+    if grep -qE 'Ready|started server|Local:' "$FRONT_LOG_FILE" 2>/dev/null; then
+      break
+    fi
+    if ! kill -0 "$(cat "$FRONT_PID_FILE")" 2>/dev/null; then
+      break
+    fi
+    sleep 1
+  done
+
+  if front_is_running; then
+    log "Servidor em background (PID $(front_pid))."
+    echo "  URL:  http://localhost:5000"
+    echo "  Logs: $FRONT_LOG_FILE"
+    echo "  Parar: ./build.sh --stop"
+  else
+    die "Servidor não iniciou. Ver $FRONT_LOG_FILE"
+  fi
+}
+
+if [[ "$DO_STOP" == true ]]; then
+  stop_front
+  exit 0
+fi
+
+if [[ "$DO_STATUS" == true ]]; then
+  status_front
+  exit 0
+fi
 
 require_cmd node
 require_cmd npm
@@ -116,16 +235,24 @@ fi
 
 # --- Build ou Dev ---
 if [[ "$DO_DEV" == true ]]; then
-  log "A iniciar servidor de desenvolvimento (porta 5000)..."
-  exec npm run dev
+  if [[ "$FOREGROUND" == true ]]; then
+    log "A iniciar servidor de desenvolvimento (porta 5000)..."
+    exec npm run dev
+  fi
+  start_front_background dev
+  exit 0
 fi
 
 log "A fazer build de produção (Next.js)..."
 npm run build
 
 if [[ "$DO_START" == true ]]; then
-  log "A iniciar servidor de produção (porta 5000)..."
-  exec npm run start --prefix "$FRONT_DIR"
+  if [[ "$FOREGROUND" == true ]]; then
+    log "A iniciar servidor de produção (porta 5000)..."
+    exec npm run start --prefix "$FRONT_DIR"
+  fi
+  start_front_background start
+  exit 0
 fi
 
 log "Build concluído."
@@ -133,5 +260,7 @@ echo ""
 echo "  DATABASE_URL: configurado em rent_finder_front/.env.local"
 echo "  Produção:     ./build.sh --start"
 echo "  Dev:          ./build.sh --dev"
+echo "  Parar front:  ./build.sh --stop"
+echo "  Estado:       ./build.sh --status"
 echo "  Scrape:       ./build.sh --scrape"
 echo ""

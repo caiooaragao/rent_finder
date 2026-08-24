@@ -18,6 +18,12 @@ function getSessionSecret(): string {
   return "dev-insecure-admin-secret";
 }
 
+/** Secure cookies exigem HTTPS. Defina ADMIN_COOKIE_SECURE=true atrás de nginx/SSL. */
+function isSecureCookie(): boolean {
+  const flag = process.env.ADMIN_COOKIE_SECURE?.trim().toLowerCase();
+  return flag === "true" || flag === "1";
+}
+
 export function signAdminSession(payload: AdminSession): string {
   const exp = Date.now() + SESSION_MS;
   const data = JSON.stringify({ ...payload, exp });
@@ -65,7 +71,7 @@ export async function setAdminSessionCookie(payload: AdminSession): Promise<void
   cookieStore.set(ADMIN_SESSION_COOKIE, signAdminSession(payload), {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: isSecureCookie(),
     path: "/",
     maxAge: SESSION_MS / 1000,
   });
