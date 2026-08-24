@@ -124,7 +124,7 @@ log "A fazer build de produção (Next.js)..."
 npm run build
 
 if [[ "$DO_START" == true ]]; then
-  log "A iniciar servidor de produção (next start)..."
+  log "A iniciar servidor de produção (porta 5000)..."
   exec npm run start --prefix "$FRONT_DIR"
 fi
 
