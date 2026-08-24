@@ -1,0 +1,16 @@
+services:
+  front:
+    build:
+      context: ../..
+      dockerfile: docker/front/Dockerfile
+      args:
+        FRONT_PORT: ${FRONT_PORT:-5000}
+    image: ${FRONT_IMAGE_NAME:-rent-finder-front}:latest
+    container_name: ${FRONT_CONTAINER_NAME:-rent-finder-front}
+    ports:
+      - "${FRONT_PORT:-5000}:${FRONT_PORT:-5000}"
+    env_file:
+      - ../../rent_finder_front/.env.local
+    environment:
+      PORT: ${FRONT_PORT:-5000}
+    restart: unless-stopped

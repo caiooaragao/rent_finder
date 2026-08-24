@@ -3,6 +3,7 @@
 # Uso:
 #   ./build.sh              # deps + db + migrate + build
 #   ./build.sh --start      # idem + next start em background (porta 5000)
+#   ./build.sh --start --docker  # idem + front em container Docker
 #   ./build.sh --dev        # deps + db + migrate + next dev em background
 #   ./build.sh --stop       # para o servidor front em background
 #   ./build.sh --status     # estado do servidor front
@@ -20,6 +21,10 @@ ENV_GENERATED="$SUPABASE_DIR/.env.generated"
 RUN_DIR="$ROOT_DIR/.run"
 FRONT_PID_FILE="$RUN_DIR/front.pid"
 FRONT_LOG_FILE="$RUN_DIR/front.log"
+FRONT_PORT="${FRONT_PORT:-5000}"
+FRONT_DOCKER_DIR="$ROOT_DIR/docker/front"
+FRONT_CONTAINER_NAME="${FRONT_CONTAINER_NAME:-rent-finder-front}"
+FRONT_IMAGE_NAME="${FRONT_IMAGE_NAME:-rent-finder-front}"
 
 SKIP_DB=false
 SKIP_INSTALL=false
@@ -30,6 +35,7 @@ DO_SCRAPE=false
 DO_STOP=false
 DO_STATUS=false
 FOREGROUND=false
+DO_DOCKER=false
 SUPABASE_INSTALL_DIR="${SUPABASE_INSTALL_DIR:-$SUPABASE_DIR/project}"
 
 while [[ $# -gt 0 ]]; do
@@ -43,6 +49,7 @@ while [[ $# -gt 0 ]]; do
     --stop) DO_STOP=true; shift ;;
     --status) DO_STATUS=true; shift ;;
     --foreground) FOREGROUND=true; shift ;;
+    --docker) DO_DOCKER=true; shift ;;
     -h | --help)
       sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -67,6 +74,150 @@ front_pid() {
   fi
 }
 
+front_port_in_use() {
+  if (echo >/dev/tcp/127.0.0.1/"$FRONT_PORT") 2>/dev/null; then
+    return 0
+  fi
+  if (echo >/dev/tcp/::1/"$FRONT_PORT") 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
+pids_listening_on_port() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true
+    return
+  fi
+  if command -v fuser >/dev/null 2>&1; then
+    fuser -n tcp "$port" 2>/dev/null | tr ' ' '\n' | grep -E '^[0-9]+$' || true
+    return
+  fi
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltnp "sport = :$port" 2>/dev/null \
+      | sed -n 's/.*pid=\([0-9]*\).*/\1/p' \
+      | sort -u
+  fi
+}
+
+kill_pid_gracefully() {
+  local pid="$1"
+  [[ -n "$pid" ]] || return 0
+  kill "$pid" 2>/dev/null || true
+
+  for _ in $(seq 1 10); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  kill -9 "$pid" 2>/dev/null || true
+}
+
+cleanup_front_docker() {
+  command -v docker >/dev/null 2>&1 || return 0
+
+  if [[ -f "$FRONT_DOCKER_DIR/docker-compose.yml" ]]; then
+    log "A parar stack Docker do front (compose down)..."
+    (
+      cd "$FRONT_DOCKER_DIR"
+      FRONT_PORT="$FRONT_PORT" \
+      FRONT_CONTAINER_NAME="$FRONT_CONTAINER_NAME" \
+      FRONT_IMAGE_NAME="$FRONT_IMAGE_NAME" \
+        docker compose down --remove-orphans 2>/dev/null
+    ) || true
+  fi
+
+  local name cid cname img_id
+  local -a container_names=(
+    "$FRONT_CONTAINER_NAME"
+    rent-finder-front
+    rent_finder_front
+  )
+
+  for name in "${container_names[@]}"; do
+    if docker ps -a --format '{{.Names}}' | grep -Fxq "$name"; then
+      log "A remover container Docker '$name'..."
+      docker rm -f "$name" 2>/dev/null || true
+    fi
+  done
+
+  while IFS= read -r cid; do
+    [[ -n "$cid" ]] || continue
+    cname="$(docker inspect -f '{{.Name}}' "$cid" 2>/dev/null | sed 's|^/||')"
+    log "A remover container Docker na porta $FRONT_PORT (${cname:-$cid})..."
+    docker rm -f "$cid" 2>/dev/null || true
+  done < <(docker ps -aq --filter "publish=$FRONT_PORT" 2>/dev/null || true)
+
+  while IFS= read -r cid; do
+    [[ -n "$cid" ]] || continue
+    log "A remover container Docker ocupando :$FRONT_PORT ($cid)..."
+    docker rm -f "$cid" 2>/dev/null || true
+  done < <(
+    docker ps --format '{{.ID}} {{.Ports}}' 2>/dev/null \
+      | grep -E "[0-9.:]+:${FRONT_PORT}->" \
+      | awk '{print $1}' || true
+  )
+
+  while IFS= read -r img_id; do
+    [[ -n "$img_id" ]] || continue
+    log "A remover imagem Docker antiga ($img_id)..."
+    docker rmi -f "$img_id" 2>/dev/null || true
+  done < <(docker images "$FRONT_IMAGE_NAME" -q 2>/dev/null | sort -u || true)
+
+  for img in "${FRONT_IMAGE_NAME}:latest" "rent-finder-front:latest"; do
+    if docker image inspect "$img" >/dev/null 2>&1; then
+      log "A remover imagem Docker '$img'..."
+      docker rmi -f "$img" 2>/dev/null || true
+    fi
+  done
+}
+
+free_front_port() {
+  local -a pids=()
+  local pid
+
+  cleanup_front_docker
+
+  if front_is_running; then
+    log "A parar instância anterior do front (PID $(front_pid))..."
+    kill_pid_gracefully "$(front_pid)"
+    rm -f "$FRONT_PID_FILE"
+  fi
+
+  if ! front_port_in_use; then
+    return 0
+  fi
+
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] && pids+=("$pid")
+  done < <(pids_listening_on_port "$FRONT_PORT")
+
+  if [[ ${#pids[@]} -eq 0 ]]; then
+    log "Porta $FRONT_PORT ocupada; a aguardar libertação..."
+    for _ in $(seq 1 10); do
+      if ! front_port_in_use; then
+        return 0
+      fi
+      sleep 1
+    done
+    die "Porta $FRONT_PORT continua ocupada e não foi possível identificar o processo."
+  fi
+
+  log "Porta $FRONT_PORT em uso (PIDs: ${pids[*]}). A encerrar..."
+  for pid in "${pids[@]}"; do
+    kill_pid_gracefully "$pid"
+  done
+
+  if front_port_in_use; then
+    die "Não foi possível libertar a porta $FRONT_PORT."
+  fi
+
+  log "Porta $FRONT_PORT livre."
+}
+
 front_is_running() {
   local pid
   pid="$(front_pid || true)"
@@ -74,33 +225,42 @@ front_is_running() {
 }
 
 stop_front() {
-  if ! front_is_running; then
+  cleanup_front_docker
+
+  if front_is_running; then
+    log "A parar servidor front (PID $(front_pid))..."
+    kill_pid_gracefully "$(front_pid)"
     rm -f "$FRONT_PID_FILE"
-    log "Servidor front não está em execução."
-    return 0
   fi
 
-  local pid
-  pid="$(front_pid)"
-  log "A parar servidor front (PID $pid)..."
-  kill "$pid" 2>/dev/null || true
+  if front_port_in_use; then
+    free_front_port
+  fi
 
-  for _ in $(seq 1 15); do
-    if ! kill -0 "$pid" 2>/dev/null; then
-      rm -f "$FRONT_PID_FILE"
-      log "Servidor front parado."
-      return 0
-    fi
-    sleep 1
-  done
+  if front_is_running || front_port_in_use; then
+    die "Não foi possível parar o servidor front na porta $FRONT_PORT."
+  fi
 
-  log "A forçar encerramento (SIGKILL)..."
-  kill -9 "$pid" 2>/dev/null || true
-  rm -f "$FRONT_PID_FILE"
   log "Servidor front parado."
 }
 
 status_front() {
+  if command -v docker >/dev/null 2>&1; then
+    if docker ps --format '{{.Names}}' | grep -Fxq "$FRONT_CONTAINER_NAME"; then
+      printf 'Docker front: em execução (%s)\n' "$FRONT_CONTAINER_NAME"
+      docker ps --filter "name=^/${FRONT_CONTAINER_NAME}$" \
+        --format '  imagem: {{.Image}} | portas: {{.Ports}}' 2>/dev/null || true
+    else
+      printf 'Docker front: parado\n'
+    fi
+  fi
+
+  if front_port_in_use; then
+    printf 'Porta %s: em uso\n' "$FRONT_PORT"
+  else
+    printf 'Porta %s: livre\n' "$FRONT_PORT"
+  fi
+
   if front_is_running; then
     printf 'Servidor front: em execução (PID %s)\n' "$(front_pid)"
     printf 'Logs: %s\n' "$FRONT_LOG_FILE"
@@ -114,24 +274,59 @@ status_front() {
   fi
 }
 
+start_front_docker() {
+  require_cmd docker
+  docker compose version >/dev/null 2>&1 || die "'docker compose' não disponível."
+  [[ -f "$FRONT_DOCKER_DIR/docker-compose.yml" ]] \
+    || die "Ficheiro em falta: $FRONT_DOCKER_DIR/docker-compose.yml"
+  [[ -f "$ENV_LOCAL" ]] || die "Ficheiro em falta: $ENV_LOCAL"
+
+  mkdir -p "$RUN_DIR"
+  free_front_port
+  rm -f "$FRONT_PID_FILE"
+
+  log "A construir imagem e iniciar front em Docker (porta $FRONT_PORT)..."
+  (
+    cd "$FRONT_DOCKER_DIR"
+    FRONT_PORT="$FRONT_PORT" \
+    FRONT_CONTAINER_NAME="$FRONT_CONTAINER_NAME" \
+    FRONT_IMAGE_NAME="$FRONT_IMAGE_NAME" \
+      docker compose up -d --build --force-recreate --remove-orphans
+  )
+
+  for _ in $(seq 1 60); do
+    if front_port_in_use; then
+      break
+    fi
+    sleep 2
+  done
+
+  if front_port_in_use; then
+    log "Front Docker em execução."
+    echo "  URL:       http://localhost:$FRONT_PORT"
+    echo "  Container: $FRONT_CONTAINER_NAME"
+    echo "  Imagem:    ${FRONT_IMAGE_NAME}:latest"
+    echo "  Logs:      cd docker/front && docker compose logs -f front"
+    echo "  Parar:     ./build.sh --stop"
+  else
+    die "Container Docker não abriu a porta $FRONT_PORT. Ver: cd docker/front && docker compose logs front"
+  fi
+}
+
 start_front_background() {
   local mode="$1"
   local cmd
 
   mkdir -p "$RUN_DIR"
-
-  if front_is_running; then
-    die "Servidor front já em execução (PID $(front_pid)). Use ./build.sh --stop"
-  fi
-
+  free_front_port
   rm -f "$FRONT_PID_FILE"
 
   if [[ "$mode" == "dev" ]]; then
     cmd=(npm run dev)
-    log "A iniciar servidor de desenvolvimento em background (porta 5000)..."
+    log "A iniciar servidor de desenvolvimento em background (porta $FRONT_PORT)..."
   else
     cmd=(npm run start --prefix "$FRONT_DIR")
-    log "A iniciar servidor de produção em background (porta 5000)..."
+    log "A iniciar servidor de produção em background (porta $FRONT_PORT)..."
   fi
 
   : >"$FRONT_LOG_FILE"
@@ -150,7 +345,7 @@ start_front_background() {
 
   if front_is_running; then
     log "Servidor em background (PID $(front_pid))."
-    echo "  URL:  http://localhost:5000"
+    echo "  URL:  http://localhost:$FRONT_PORT"
     echo "  Logs: $FRONT_LOG_FILE"
     echo "  Parar: ./build.sh --stop"
   else
@@ -235,11 +430,20 @@ fi
 
 # --- Build ou Dev ---
 if [[ "$DO_DEV" == true ]]; then
+  if [[ "$DO_DOCKER" == true ]]; then
+    die "Modo --docker só está disponível com --start (produção)."
+  fi
   if [[ "$FOREGROUND" == true ]]; then
-    log "A iniciar servidor de desenvolvimento (porta 5000)..."
+    free_front_port
+    log "A iniciar servidor de desenvolvimento (porta $FRONT_PORT)..."
     exec npm run dev
   fi
   start_front_background dev
+  exit 0
+fi
+
+if [[ "$DO_START" == true && "$DO_DOCKER" == true ]]; then
+  start_front_docker
   exit 0
 fi
 
@@ -248,7 +452,8 @@ npm run build
 
 if [[ "$DO_START" == true ]]; then
   if [[ "$FOREGROUND" == true ]]; then
-    log "A iniciar servidor de produção (porta 5000)..."
+    free_front_port
+    log "A iniciar servidor de produção (porta $FRONT_PORT)..."
     exec npm run start --prefix "$FRONT_DIR"
   fi
   start_front_background start
@@ -259,6 +464,7 @@ log "Build concluído."
 echo ""
 echo "  DATABASE_URL: configurado em rent_finder_front/.env.local"
 echo "  Produção:     ./build.sh --start"
+echo "  Docker:       ./build.sh --start --docker"
 echo "  Dev:          ./build.sh --dev"
 echo "  Parar front:  ./build.sh --stop"
 echo "  Estado:       ./build.sh --status"
