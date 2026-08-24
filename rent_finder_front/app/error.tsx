@@ -34,8 +34,8 @@ export default function ErrorPage({
       {likelyDb ? (
         <p style={{ marginBottom: "1rem" }}>
           Falha ao ligar à base de dados. Confirma{" "}
-          <code>DATABASE_URL</code> (self-hosted: pooler porta{" "}
-          <code>6543</code>; ver <code>docker/supabase/README.md</code>).
+          <code>DATABASE_URL</code> no Supabase Cloud (pooler transaction, porta{" "}
+          <code>6543</code>; ver <code>rent_finder_front/.env.example</code>).
           Mensagem:{" "}
           <code style={{ fontSize: "0.85em", wordBreak: "break-all" }}>
             {msg}

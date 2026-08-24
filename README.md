@@ -100,29 +100,20 @@ rent_finder/
 
 ## Base de dados
 
-- **Motor**: PostgreSQL via **Supabase self-hosted em Docker** no servidor de deploy (recomendado) ou Supabase Cloud.
+- **Motor**: PostgreSQL via **Supabase Cloud** ([projeto `gcdgjonmuyhbklbgdetx`](https://supabase.com/dashboard/project/gcdgjonmuyhbklbgdetx)).
 - **ORM**: Drizzle — esquema em `rent_finder_front/lib/db/schema.ts`.
 - **Migrações SQL**: cópias/alinhamento em `rent_finder_front/supabase/migrations/` e fluxos no scraper (`rent_finder_scraper/migrations/`).
 - **Conexão**: `DATABASE_URL`; o cliente é criado **lazy** (`getDb()` / `getSql()` em `lib/db/drizzle.ts`) para permitir `next build` sem credenciais no ambiente de CI e para reutilizar conexão em ambientes serverless.
 
 Relações principais (conceito): `anuncios` ligados a `bairros`, `cidades`, `estados` quando os IDs estão preenchidos; joins à esquerda quando faltam FKs.
 
-### Supabase self-hosted (Docker)
+### Supabase Cloud
 
-O banco corre no **mesmo servidor** que a aplicação, com dados persistentes em disco (`docker/supabase/project/volumes/db/data`). Sobrevive a reinícios do Docker e do SO.
+1. No [dashboard do Supabase](https://supabase.com/dashboard/project/gcdgjonmuyhbklbgdetx), abra **Connect** → **Transaction pooler** (porta `6543`).
+2. Copie a URI para `rent_finder_front/.env.local` como `DATABASE_URL`.
+3. Aplique migrações: `npm run db:migrate` (na raiz ou em `rent_finder_front`).
 
-```bash
-# No servidor (Linux + Docker)
-cd docker/supabase && chmod +x *.sh && ./setup.sh
-
-# Na raiz do monorepo
-cp docker/supabase/.env.generated rent_finder_front/.env.local
-npm run db:migrate
-```
-
-Documentação completa: [`docker/supabase/README.md`](docker/supabase/README.md).
-
-Scripts na raiz: `npm run db:setup`, `db:up`, `db:down`, `db:status`, `db:backup`.
+O cliente usa `prepare: false` (já configurado) — necessário para o pooler transaction.
 
 ---
 
@@ -305,9 +296,9 @@ Variáveis sensíveis e caminhos devem estar documentados nos próprios scripts 
 
 | Variável | Obrigatória | Descrição |
 |----------|-------------|-----------|
-| `DATABASE_URL` | **Sim** em runtime | URI PostgreSQL. Self-hosted: `postgresql://postgres.rentfinder:[PASSWORD]@127.0.0.1:6543/postgres` (pooler transaction). Cloud: pooler `6543` ou direto `5432`. O cliente usa `prepare: false` (já configurado). |
+| `DATABASE_URL` | **Sim** em runtime | URI PostgreSQL do Supabase Cloud. Pooler transaction (porta `6543`) ou conexão direta (`5432`). O cliente usa `prepare: false` (já configurado). |
 
-Copiar `rent_finder_front/.env.example` para `.env.local`. Após `npm run db:setup`, use `docker/supabase/.env.generated`.
+Copiar `rent_finder_front/.env.example` para `.env.local` e preencher com a URI do dashboard Supabase.
 
 ### Scraper
 
@@ -321,13 +312,13 @@ Conforme os scripts (`loadEnv.mjs`, etc.): tipicamente URL da base e credenciais
 
 - **Node.js** ≥ 20.9 (ver `engines` em `rent_finder_front/package.json`).
 - **npm** (ou equivalente) para instalar dependências.
-- **Docker** (opcional, para Supabase local): ver [`docker/supabase/README.md`](docker/supabase/README.md).
+- **`DATABASE_URL`** do Supabase Cloud em `rent_finder_front/.env.local`.
 
-### Base de dados local (Supabase Docker)
+### Base de dados
 
 ```bash
-npm run db:setup          # primeira vez — instala e inicia Supabase
-cp docker/supabase/.env.generated rent_finder_front/.env.local
+cp rent_finder_front/.env.example rent_finder_front/.env.local
+# Edite .env.local com a DATABASE_URL do Supabase Dashboard → Connect → Transaction pooler
 npm run db:migrate
 ```
 
@@ -359,23 +350,19 @@ npm run build   # build de produção Next.js
 
 ## Build e deploy
 
-### Deploy no servidor (recomendado com Supabase Docker)
+### Deploy no servidor
 
-1. No servidor Linux, instale Docker e execute `docker/supabase/setup.sh` (ou `npm run db:setup`).
-2. Configure `DATABASE_URL` no ambiente da app (`.env.local` ou variáveis do process manager).
-3. `npm run db:migrate` e `npm run build` / `npm run dev` (ou PM2/systemd para produção).
-4. Agende `npm run db:backup` via cron para cópias de segurança extra.
-
-Os dados persistem em `docker/supabase/project/volumes/db/data` (ou `/opt/rent-finder/supabase/volumes/` se instalou nesse caminho).
+1. Configure `DATABASE_URL` no ambiente da app (`.env.local` ou variáveis do process manager).
+2. `npm run db:migrate` e `npm run build` / `npm run dev` (ou PM2/systemd para produção).
 
 ### Deploy completo (um comando)
 
 ```bash
 chmod +x build.sh
-./build.sh --start          # deps + Supabase + migrate + build + next start
+./build.sh --start          # deps + migrate + build + next start
 ./build.sh --dev              # idem, mas em modo desenvolvimento (porta 5000)
 ./build.sh --scrape           # inclui scrape OLX após migrate
-./build.sh --skip-db          # se o banco já estiver a correr
+./build.sh --skip-migrate     # se as migrações já estiverem aplicadas
 ```
 
 Equivalente via npm: `npm run deploy` (produção) ou `npm run deploy:dev`.
@@ -388,15 +375,13 @@ npm run build
 
 Exige normalmente `DATABASE_URL` disponível quando rotas dinâmicas ou ferramentas avaliam código que importa `getListings`; em CI, configurar o segredo ou usar build com env injetado.
 
-### Vercel (alternativa — requer Supabase Cloud ou Postgres acessível na rede)
+### Vercel
 
 1. Importar o repositório e definir **Root Directory** = `rent_finder_front` se o deploy partir da raiz do monorepo.
 2. Adicionar **`DATABASE_URL`** em *Environment Variables* (Production e Preview).
 3. Opcional: `vercel.json` no front já sugere framework Next.js e região `gru1` (ajustável).
 
 Autenticação CLI: `npx vercel login` antes de `npx vercel` / `npx vercel --prod`.
-
-> Para self-hosted, o deploy na Vercel só funciona se o Postgres no seu servidor estiver exposto na internet (não recomendado). Prefira correr a app no mesmo servidor que o Docker.
 
 ---
 

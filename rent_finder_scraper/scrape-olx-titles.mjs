@@ -82,49 +82,12 @@ const DEFAULT_BATCH_SIZE = 1000;
 const DEFAULT_CONCURRENCY = 5;
 
 const CURL_MAX_BUFFER = 15 * 1024 * 1024;
-const OLX_COOKIE_JAR = join(__dirname, ".olx-curl-cookies.txt");
-const NULL_DEVICE = process.platform === "win32" ? "NUL" : "/dev/null";
-const SCRAPE_PROXY = process.env.OLX_SCRAPE_PROXY?.trim() || "";
-const JINA_FALLBACK = process.env.OLX_SCRAPE_DISABLE_JINA !== "1";
-const JINA_LISTING_PREFIX = "<!--OLX_JINA_LISTING:";
-const JINA_MAX_CONCURRENT = Math.max(
-  1,
-  parseInt(process.env.OLX_SCRAPE_JINA_CONCURRENCY ?? "2", 10) || 2
-);
-const JINA_MAX_RETRIES = Math.max(
-  1,
-  parseInt(process.env.OLX_SCRAPE_JINA_RETRIES ?? "3", 10) || 3
-);
 
 const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-
-let olxSessionWarmed = false;
-let jinaInFlight = 0;
-/** @type {Array<() => void>} */
-const jinaWaitQueue = [];
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 /** @param {number} ms */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-/**
- * Limita chamadas simultâneas à Jina (evita rate limit no tier gratuito).
- * @template T
- * @param {() => Promise<T>} fn
- */
-async function withJinaSlot(fn) {
-  if (jinaInFlight >= JINA_MAX_CONCURRENT) {
-    await new Promise((resolve) => jinaWaitQueue.push(resolve));
-  }
-  jinaInFlight++;
-  try {
-    return await fn();
-  } finally {
-    jinaInFlight--;
-    const next = jinaWaitQueue.shift();
-    if (next) next();
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Utilitário de concorrência — sem dependências externas
@@ -306,12 +269,6 @@ function extractLinks(html) {
 
 /** @param {string} html */
 function extractAds(html) {
-  const jina = unwrapJinaListingResult(html);
-  if (jina?.ads?.length) return jina.ads;
-
-  const fromNext = extractAdsFromNextData(html);
-  if (fromNext.length) return fromNext;
-
   const titulos = extractTitles(html);
   const precos = extractPrices(html);
   const links = extractLinks(html);
@@ -330,14 +287,6 @@ function extractAds(html) {
 
 /** @param {string} html */
 function readListingMeta(html) {
-  const jina = unwrapJinaListingResult(html);
-  if (jina) {
-    return {
-      totalOfAds: Number(jina.totalOfAds) || jina.ads.length,
-      pageSize: Number(jina.pageSize) || jina.ads.length || 50,
-    };
-  }
-
   const block = html.match(
     /<script id="__NEXT_DATA__"[^>]*>([^<]+)<\/script>/
   );
@@ -395,311 +344,6 @@ function hasListingMarkup(html) {
   );
 }
 
-/** @param {string} html */
-function parseNextData(html) {
-  const block = html.match(
-    /<script id="__NEXT_DATA__"[^>]*>([^<]+)<\/script>/
-  );
-  if (!block) return null;
-  try {
-    return JSON.parse(block[1]);
-  } catch {
-    return null;
-  }
-}
-
-/** @param {Record<string, unknown>} ad */
-function formatOlxPrice(ad) {
-  const raw = ad.priceValue ?? ad.price;
-  if (typeof raw === "number" && Number.isFinite(raw)) {
-    return `R$ ${raw.toLocaleString("pt-BR")}`;
-  }
-  if (typeof raw === "string" && raw.trim()) return raw.trim();
-  return "";
-}
-
-/** @param {Record<string, unknown>} ad */
-function adUrlFromNext(ad) {
-  const raw = ad.friendlyUrl ?? ad.url ?? "";
-  if (typeof raw !== "string" || !raw.trim()) return "";
-  const s = raw.trim();
-  if (s.startsWith("http")) return s;
-  return `${OLX_ORIGIN}${s.startsWith("/") ? s : `/${s}`}`;
-}
-
-/** @param {string} html */
-function extractAdsFromNextData(html) {
-  const data = parseNextData(html);
-  const ads = data?.props?.pageProps?.ads;
-  if (!Array.isArray(ads) || ads.length === 0) return [];
-
-  const out = [];
-  for (const ad of ads) {
-    if (!ad || typeof ad !== "object") continue;
-    if (!ad.listId) continue;
-    const titulo = String(ad.subject ?? ad.title ?? "").trim();
-    const link = adUrlFromNext(ad);
-    if (!titulo || !link) continue;
-    out.push({ titulo, preco: formatOlxPrice(ad), link });
-  }
-  return out;
-}
-
-function hasListingData(html) {
-  if (typeof html !== "string" || html.length < 500) return false;
-  if (html.startsWith(JINA_LISTING_PREFIX)) return true;
-  if (hasListingMarkup(html)) return true;
-  return extractAdsFromNextData(html).length > 0;
-}
-
-/** @param {string | undefined} html */
-function describeBlockedHtml(html) {
-  if (typeof html !== "string" || html.length === 0) return "resposta vazia";
-  const title = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() ?? "";
-  if (
-    /cloudflare|attention required|just a moment/i.test(html) ||
-    /cf-browser-verification/i.test(html)
-  ) {
-    return "bloqueio Cloudflare (VPS/datacenter costuma ser barrado — use OLX_SCRAPE_PROXY ou Jina)";
-  }
-  if (/access denied|forbidden/i.test(html)) return "acesso negado pela OLX";
-  if (title) return `sem listagem (title: ${title.slice(0, 80)})`;
-  return `sem __NEXT_DATA__ (${html.length} bytes)`;
-}
-
-/**
- * @param {{ ads: Array<{ titulo: string; preco: string; link: string }>; totalOfAds: number; pageSize: number }} parsed
- */
-function wrapJinaListingResult(parsed) {
-  return `${JINA_LISTING_PREFIX}${JSON.stringify(parsed)}-->`;
-}
-
-/** @param {string} html */
-function unwrapJinaListingResult(html) {
-  if (!html.startsWith(JINA_LISTING_PREFIX)) return null;
-  const end = html.indexOf("-->", JINA_LISTING_PREFIX.length);
-  if (end === -1) return null;
-  try {
-    return JSON.parse(html.slice(JINA_LISTING_PREFIX.length, end));
-  } catch {
-    return null;
-  }
-}
-
-/** @param {string} md */
-function parseSearchMarkdown(md) {
-  const cut = md.search(/##\s*Você pode gostar/i);
-  const mdBusca = cut >= 0 ? md.slice(0, cut) : md;
-
-  let totalOfAds = 0;
-  const mt = mdBusca.match(/de\s+(\d+)\s+resultados?/i);
-  if (mt) totalOfAds = parseInt(mt[1], 10);
-
-  const pattern =
-    /## \[([^\]]+)\]\((https?:\/\/[^\s)"]+)[^)]*\)\s*([\s\S]*?)Adicionar aos favoritos/g;
-  const ads = [];
-  const seen = new Set();
-
-  let m;
-  while ((m = pattern.exec(mdBusca))) {
-    const titulo = m[1].trim();
-    const link = m[2].trim();
-    if (link.includes("top_ads")) continue;
-    const idm = link.match(/\/(\d{8,})(?:\?|$|-)/);
-    const id = idm ? idm[1] : link;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const bloco = m[3];
-    const precoM = bloco.match(/R\$\s*([\d.,]+)/);
-    const preco = precoM ? `R$ ${precoM[1]}` : "";
-    ads.push({ titulo, preco, link });
-  }
-
-  return {
-    ads,
-    totalOfAds: totalOfAds || ads.length,
-    pageSize: ads.length || 50,
-  };
-}
-
-function buildCurlBaseArgs(referer = `${OLX_ORIGIN}/`) {
-  /** @type {string[]} */
-  const args = [
-    "-sSL",
-    "--compressed",
-    "-A",
-    UA,
-    "--max-time",
-    "90",
-    "-b",
-    OLX_COOKIE_JAR,
-    "-c",
-    OLX_COOKIE_JAR,
-    "-H",
-    "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "-H",
-    "Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-    "-H",
-    `Referer: ${referer}`,
-    "-H",
-    "Upgrade-Insecure-Requests: 1",
-    "-H",
-    "Sec-Fetch-Dest: document",
-    "-H",
-    "Sec-Fetch-Mode: navigate",
-    "-H",
-    "Sec-Fetch-Site: same-origin",
-    "-H",
-    "Sec-Fetch-User: ?1",
-  ];
-  if (SCRAPE_PROXY) args.push("--proxy", SCRAPE_PROXY);
-  return args;
-}
-
-async function ensureOlxSession() {
-  if (olxSessionWarmed) return;
-  const args = [
-    ...buildCurlBaseArgs("https://www.google.com/"),
-    "-o",
-    NULL_DEVICE,
-    `${OLX_ORIGIN}/`,
-  ];
-  try {
-    await execFileAsync("curl", args, {
-      maxBuffer: CURL_MAX_BUFFER,
-      encoding: "utf8",
-    });
-    olxSessionWarmed = true;
-  } catch {
-    // warm-up opcional
-  }
-}
-
-/** @param {string} line */
-function looksLikeOlxAddress(line) {
-  const s = line.trim();
-  if (!s || s.length < 8) return false;
-  if (/^fechar|exibir no mapa|publicidade/i.test(s)) return false;
-  return /,/.test(s) || /\b[A-Z]{2}\b/.test(s) || /\d{5}-?\d{3}/.test(s);
-}
-
-/** @param {string} md */
-function jinaDetailScope(md) {
-  const footer = md.search(/\nC[oó]digo do an[uú]ncio:\s*\d+\s*\n+Apartamentos Casas/i);
-  if (footer > 0) return md.slice(0, footer);
-  const denuncia = md.search(/\nDenunciar an[uú]ncio/i);
-  if (denuncia > 0) return md.slice(0, denuncia);
-  return md;
-}
-
-/** @param {string} scope */
-function extractDescriptionFromJinaScope(scope) {
-  const descHeading = scope.match(
-    /##\s*Descri[çc][ãa]o\s*([\s\S]*?)(?:##|\n\* \* \*|\nLocaliza[cç][aã]o)/i
-  );
-  if (descHeading) {
-    const text = stripMarkdownPlainText(descHeading[1]);
-    if (text.length >= 20) return text;
-  }
-
-  const mapBlock = scope.match(/Mapa\s*\n+([\s\S]*?)Ver descri[cç][aã]o completa/i);
-  if (mapBlock) {
-    const lines = mapBlock[1]
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l && !/^\*\s+/.test(l));
-    let start = 0;
-    if (
-      lines[0] &&
-      lines[0].length < 100 &&
-      lines[0] === lines[0].toUpperCase() &&
-      !lines[0].includes(".")
-    ) {
-      start = 1;
-    }
-    const text = stripMarkdownPlainText(lines.slice(start).join("\n"));
-    if (text.length >= 20) return text;
-  }
-
-  const inlineCodigo = scope.match(
-    /C[oó]digo do an[uú]ncio:\s*[^\n]+\s*([\s\S]*?)(?:Ver descri[cç][aã]o completa|(?:^|\n)Localiza[cç][aã]o)/im
-  );
-  if (inlineCodigo) {
-    const text = stripMarkdownPlainText(inlineCodigo[1]);
-    if (text.length >= 20) return text;
-  }
-
-  const bulletTail = scope.match(
-    /(?:\*[^\n]*\n)+([^\n*#][\s\S]*?)(?:\n\* \* \*|\nLocaliza[cç][aã]o)/i
-  );
-  if (bulletTail) {
-    const text = stripMarkdownPlainText(bulletTail[1]);
-    if (text.length >= 10) return text;
-  }
-
-  return "";
-}
-
-/** @param {string} md */
-function parseAdDetailMarkdown(md) {
-  if (!md || md.length < 200) return { descricao: "", endereco: "" };
-
-  const scope = jinaDetailScope(md);
-  const descricao = extractDescriptionFromJinaScope(scope);
-
-  let endereco = "";
-  const locHeading = scope.match(/##\s*Localiza[çc][ãa]o\s*([\s\S]*?)(?:##|\n\* \* \*)/i);
-  if (locHeading) {
-    endereco =
-      stripMarkdownPlainText(locHeading[1])
-        .split("\n")
-        .map((l) => l.trim())
-        .filter(Boolean)[0] ?? "";
-  }
-  if (!endereco) {
-    const locPlain = /(?:^|\n)Localiza[cç][aã]o\s*\n+([^\n]+)/gim;
-    let m;
-    while ((m = locPlain.exec(scope))) {
-      const candidate = stripMarkdownPlainText(m[1]);
-      if (looksLikeOlxAddress(candidate)) {
-        endereco = candidate;
-        break;
-      }
-    }
-  }
-
-  return { descricao, endereco };
-}
-
-/** @param {string} text */
-function stripMarkdownPlainText(text) {
-  return text
-    .replace(/!\[[^\]]*\]\([^)]+\)/g, "")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/^#+\s*/gm, "")
-    .replace(/[*_`>-]/g, "")
-    .trim();
-}
-
-/** @param {string} url */
-async function fetchAdDetail(url) {
-  try {
-    const detailHtml = await fetchHtmlCurlOnly(url, hasAdMarkup);
-    return {
-      descricao: extractDescricao(detailHtml),
-      endereco: extractEndereco(detailHtml),
-    };
-  } catch (e) {
-    if (!JINA_FALLBACK) throw e;
-    const md = await fetchMarkdownViaJina(url);
-    const parsed = parseAdDetailMarkdown(md);
-    if (!parsed.descricao && !parsed.endereco) {
-      throw new Error(`Jina não retornou detalhes do anúncio (${md.length} bytes)`);
-    }
-    return parsed;
-  }
-}
-
 /** Ad detail pages do not ship __NEXT_DATA__; rely on HTML marker. */
 function hasAdMarkup(html) {
   return (
@@ -709,74 +353,13 @@ function hasAdMarkup(html) {
   );
 }
 
-async function fetchHtmlViaCurl(url, referer = `${OLX_ORIGIN}/`) {
-  await ensureOlxSession();
+async function fetchHtmlViaCurl(url) {
   const { stdout } = await execFileAsync(
     "curl",
-    [...buildCurlBaseArgs(referer), url],
+    ["-sL", "-A", UA, "--max-time", "90", url],
     { maxBuffer: CURL_MAX_BUFFER, encoding: "utf8" }
   );
   return stdout;
-}
-
-/** @param {string | undefined} md */
-function jinaMarkdownLooksValid(md) {
-  if (!md || md.length < 500) return false;
-  const head = md.slice(0, 800).toLowerCase();
-  if (/rate limit|too many requests|unauthorized|error 4\d\d|error 5\d\d/.test(head)) {
-    return false;
-  }
-  return /olx\.com\.br|localiza/i.test(md);
-}
-
-/** @param {string} url */
-async function fetchMarkdownViaJinaOnce(url) {
-  const jinaUrl = `https://r.jina.ai/${url}`;
-  /** @type {string[]} */
-  const headers = ["Accept: text/markdown", "X-Return-Format: markdown"];
-  const jinaKey = process.env.JINA_API_KEY?.trim();
-  if (jinaKey) headers.push(`Authorization: Bearer ${jinaKey}`);
-
-  const args = ["-sSL", "--max-time", "120"];
-  for (const h of headers) args.push("-H", h);
-  args.push(jinaUrl);
-
-  const { stdout } = await execFileAsync("curl", args, {
-    maxBuffer: CURL_MAX_BUFFER,
-    encoding: "utf8",
-  });
-  return stdout;
-}
-
-/** @param {string} url */
-async function fetchMarkdownViaJina(url) {
-  return withJinaSlot(async () => {
-    /** @type {unknown} */
-    let lastErr;
-    for (let attempt = 1; attempt <= JINA_MAX_RETRIES; attempt++) {
-      try {
-        const md = await fetchMarkdownViaJinaOnce(url);
-        if (!jinaMarkdownLooksValid(md)) {
-          throw new Error(`resposta inválida (${md?.length ?? 0} bytes)`);
-        }
-        return md;
-      } catch (e) {
-        lastErr = e;
-        if (attempt < JINA_MAX_RETRIES) await sleep(800 * attempt);
-      }
-    }
-    throw lastErr instanceof Error ? lastErr : new Error("Jina falhou após tentativas");
-  });
-}
-
-/** @param {string} url */
-async function fetchListingViaJina(url) {
-  const md = await fetchMarkdownViaJina(url);
-  const parsed = parseSearchMarkdown(md);
-  if (!parsed.ads.length) {
-    throw new Error("Jina não retornou anúncios na listagem");
-  }
-  return parsed;
 }
 
 const ARCGIS_GEOCODE =
@@ -874,7 +457,7 @@ async function fetchHtmlCurlOnly(url, isValid) {
   }
   if (isValid(text)) return text;
   throw new Error(
-    `Could not load valid HTML for ${url} (${describeBlockedHtml(text)}).`
+    `Could not load valid HTML for ${url} (blocked or layout changed).`
   );
 }
 
@@ -888,42 +471,18 @@ async function fetchHtmlCurlOnly(url, isValid) {
 async function fetchHtml(url, isValid) {
   const headers = {
     "user-agent": UA,
-    "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+    "accept-language": "pt-BR,pt;q=0.9",
     accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    referer: `${OLX_ORIGIN}/`,
   };
 
-  /** @type {string | undefined} */
-  let lastText;
-
+  // Tenta fetch nativo (mais leve se funcionar); OLX de listagem às vezes passa.
   try {
     const res = await fetch(url, { headers });
+    // Consome o body e descarta imediatamente — evita retenção no pool do undici.
     const text = await res.text();
-    lastText = text;
     if (res.ok && isValid(text)) return text;
   } catch {
     // cai no curl
-  }
-
-  try {
-    const text = await fetchHtmlViaCurl(url);
-    lastText = text;
-    if (isValid(text)) return text;
-  } catch {
-    // tenta Jina abaixo
-  }
-
-  if (JINA_FALLBACK && isValid === hasListingData) {
-    console.error(`[fetch] OLX direto falhou para ${url}; tentando via Jina…`);
-    try {
-      const parsed = await fetchListingViaJina(url);
-      return wrapJinaListingResult(parsed);
-    } catch (e) {
-      const hint = e && e.message ? ` | Jina: ${e.message}` : "";
-      throw new Error(
-        `Could not load valid HTML for ${url} (${describeBlockedHtml(lastText)}).${hint}`
-      );
-    }
   }
 
   return fetchHtmlCurlOnly(url, isValid);
@@ -940,7 +499,7 @@ async function fetchHtml(url, isValid) {
  * @param {number} searchTotal label para o log
  */
 async function collectListingAdsForSearchUrl(url, maxPages, searchIndex, searchTotal) {
-  const firstHtml = await fetchHtml(url, hasListingData);
+  const firstHtml = await fetchHtml(url, hasListingMarkup);
   const { totalOfAds, pageSize } = readListingMeta(firstHtml);
   const estimatedPages =
     totalOfAds > 0 && pageSize > 0 ? Math.ceil(totalOfAds / pageSize) : 1;
@@ -959,7 +518,7 @@ async function collectListingAdsForSearchUrl(url, maxPages, searchIndex, searchT
       html = firstHtml;
     } else {
       try {
-        html = await fetchHtml(pageUrl, hasListingData);
+        html = await fetchHtml(pageUrl, hasListingMarkup);
       } catch (e) {
         const msg = e && e.message ? e.message : String(e);
         console.error(
@@ -1078,9 +637,12 @@ async function enrichBatchWithDetails(batch, globalOffset, detailMax, concurrenc
     }
 
     try {
-      const detail = await fetchAdDetail(ad.link);
-      ad.descricao = detail.descricao;
-      ad.endereco = detail.endereco;
+      // curl diretamente — evita o pool de conexões do fetch/undici que acumula
+      // memória sob alta concorrência (OLX bloqueia fetch via Cloudflare de qualquer forma).
+      const detailHtml = await fetchHtmlCurlOnly(ad.link, hasAdMarkup);
+      ad.descricao = extractDescricao(detailHtml);
+      ad.endereco = extractEndereco(detailHtml);
+      // detailHtml sai de escopo — elegível para GC
     } catch (e) {
       ad.descricao = "";
       ad.endereco = "";
@@ -1165,7 +727,7 @@ async function main() {
   }
 
   console.error(
-    `[config] concurrency detalhes=${concurrency} | geocode=${geocodeConcurrency} | jina=${JINA_MAX_CONCURRENT} | batch=${batchSize} | truncate=${truncate}`
+    `[config] concurrency detalhes=${concurrency} | geocode=${geocodeConcurrency} | batch=${batchSize} | truncate=${truncate}`
   );
 
   // ── Fase 1: coleta de cartões em paralelo por URL de pesquisa ─────────────

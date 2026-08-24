@@ -7,7 +7,7 @@
 #   ./build.sh --dev        # deps + db + migrate + next dev em background
 #   ./build.sh --stop       # para o servidor front em background
 #   ./build.sh --status     # estado do servidor front
-#   ./build.sh --skip-db    # sem tocar no Supabase (já a correr)
+#   ./build.sh --skip-migrate    # sem aplicar migrações SQL
 #   ./build.sh --scrape     # inclui scrape OLX após migrate
 #   ./build.sh --foreground # com --start/--dev, bloqueia o terminal (comportamento antigo)
 set -euo pipefail
@@ -15,9 +15,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONT_DIR="$ROOT_DIR/rent_finder_front"
 SCRAPER_DIR="$ROOT_DIR/rent_finder_scraper"
-SUPABASE_DIR="$ROOT_DIR/docker/supabase"
 ENV_LOCAL="$FRONT_DIR/.env.local"
-ENV_GENERATED="$SUPABASE_DIR/.env.generated"
 RUN_DIR="$ROOT_DIR/.run"
 FRONT_PID_FILE="$RUN_DIR/front.pid"
 FRONT_LOG_FILE="$RUN_DIR/front.log"
@@ -26,7 +24,6 @@ FRONT_DOCKER_DIR="$ROOT_DIR/docker/front"
 FRONT_CONTAINER_NAME="${FRONT_CONTAINER_NAME:-rent-finder-front}"
 FRONT_IMAGE_NAME="${FRONT_IMAGE_NAME:-rent-finder-front}"
 
-SKIP_DB=false
 SKIP_INSTALL=false
 SKIP_MIGRATE=false
 DO_START=false
@@ -36,11 +33,9 @@ DO_STOP=false
 DO_STATUS=false
 FOREGROUND=false
 DO_DOCKER=false
-SUPABASE_INSTALL_DIR="${SUPABASE_INSTALL_DIR:-$SUPABASE_DIR/project}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --skip-db) SKIP_DB=true; shift ;;
     --skip-install) SKIP_INSTALL=true; shift ;;
     --skip-migrate) SKIP_MIGRATE=true; shift ;;
     --start) DO_START=true; shift ;;
@@ -456,42 +451,8 @@ if [[ "$SKIP_INSTALL" == false ]]; then
   npm ci --prefix "$SCRAPER_DIR" 2>/dev/null || npm install --prefix "$SCRAPER_DIR"
 fi
 
-# --- Supabase Docker ---
-if [[ "$SKIP_DB" == false ]]; then
-  require_cmd docker
-  docker compose version >/dev/null 2>&1 || die "'docker compose' não disponível."
-
-  if [[ ! -f "$SUPABASE_INSTALL_DIR/docker-compose.yml" ]]; then
-    log "Supabase não instalado — a executar setup..."
-    chmod +x "$SUPABASE_DIR/setup.sh" "$SUPABASE_DIR/manage.sh" 2>/dev/null || true
-    SUPABASE_INSTALL_DIR="$SUPABASE_INSTALL_DIR" bash "$SUPABASE_DIR/setup.sh"
-  else
-    log "A iniciar Supabase..."
-    SUPABASE_INSTALL_DIR="$SUPABASE_INSTALL_DIR" bash "$SUPABASE_DIR/manage.sh" start
-  fi
-
-  # Aguardar pooler (6543)
-  log "A aguardar Postgres (porta 6543)..."
-  for _ in $(seq 1 60); do
-    if (echo >/dev/tcp/127.0.0.1/6543) 2>/dev/null; then
-      break
-    fi
-    sleep 2
-  done
-  (echo >/dev/tcp/127.0.0.1/6543) 2>/dev/null || die "Postgres não respondeu na porta 6543."
-fi
-
 # --- DATABASE_URL ---
-if [[ -f "$ENV_GENERATED" ]]; then
-  if [[ ! -f "$ENV_LOCAL" ]]; then
-    log "A copiar DATABASE_URL para rent_finder_front/.env.local"
-    cp "$ENV_GENERATED" "$ENV_LOCAL"
-  fi
-elif [[ ! -f "$ENV_LOCAL" ]]; then
-  die "DATABASE_URL em falta. Defina rent_finder_front/.env.local ou execute sem --skip-db."
-fi
-
-[[ -f "$ENV_LOCAL" ]] || die "Ficheiro em falta: $ENV_LOCAL"
+[[ -f "$ENV_LOCAL" ]] || die "Ficheiro em falta: $ENV_LOCAL — copie rent_finder_front/.env.example e defina DATABASE_URL (Supabase Cloud)."
 grep -q '^DATABASE_URL=.\+' "$ENV_LOCAL" || die "DATABASE_URL vazio em $ENV_LOCAL"
 
 # --- Migrações ---

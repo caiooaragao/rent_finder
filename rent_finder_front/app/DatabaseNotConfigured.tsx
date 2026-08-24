@@ -17,17 +17,23 @@ export default function DatabaseNotConfigured() {
       <p style={{ marginBottom: "1rem", color: "var(--foreground-muted, #666)" }}>
         Defina a variável de ambiente{" "}
         <code style={{ fontSize: "0.9em" }}>DATABASE_URL</code> com a connection
-        string do Postgres (Supabase self-hosted ou cloud).
+        string do Postgres no Supabase Cloud.
       </p>
       <p style={{ marginBottom: "1rem", color: "var(--foreground-muted, #666)" }}>
-        Self-hosted: após <code>npm run db:setup</code>, copie{" "}
-        <code>docker/supabase/.env.generated</code> para{" "}
-        <code>rent_finder_front/.env.local</code>. Use o pooler na porta{" "}
-        <code>6543</code> (modo transaction).
+        No dashboard do Supabase, abra <strong>Connect</strong> →{" "}
+        <strong>Transaction pooler</strong> (porta <code>6543</code>) e copie a
+        URI para <code>rent_finder_front/.env.local</code>.
       </p>
       <p style={{ fontSize: "0.9rem" }}>
-        Ver <code>docker/supabase/README.md</code> e{" "}
-        <code>rent_finder_front/.env.example</code>.
+        Ver <code>rent_finder_front/.env.example</code> e o projeto em{" "}
+        <a
+          href="https://supabase.com/dashboard/project/gcdgjonmuyhbklbgdetx"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Supabase Dashboard
+        </a>
+        .
       </p>
     </main>
   );
