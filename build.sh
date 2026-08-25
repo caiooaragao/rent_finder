@@ -66,9 +66,20 @@ load_env_local() {
   set +a
 }
 
+validate_env_local() {
+  local count
+  count=$(grep -cE '^DATABASE_URL=' "$ENV_LOCAL" 2>/dev/null || echo 0)
+  if [[ "$count" -eq 0 ]]; then
+    die "DATABASE_URL ausente em $ENV_LOCAL"
+  fi
+  if [[ "$count" -gt 1 ]]; then
+    die "DATABASE_URL definida ${count} vezes em $ENV_LOCAL — deixe apenas a URI do Supabase Cloud."
+  fi
+}
+
 warn_local_database_url() {
   if [[ "${DATABASE_URL:-}" == *127.0.0.1* || "${DATABASE_URL:-}" == *localhost* ]]; then
-    log "AVISO: DATABASE_URL aponta para localhost — em deploy use o Supabase Cloud."
+    die "DATABASE_URL aponta para localhost em $ENV_LOCAL — use o Supabase Cloud (db.gcdgjonmuyhbklbgdetx.supabase.co)."
   fi
 }
 
@@ -474,7 +485,7 @@ fi
 
 # --- DATABASE_URL ---
 [[ -f "$ENV_LOCAL" ]] || die "Ficheiro em falta: $ENV_LOCAL — copie rent_finder_front/.env.example e defina DATABASE_URL (Supabase Cloud)."
-grep -q '^DATABASE_URL=.\+' "$ENV_LOCAL" || die "DATABASE_URL vazio em $ENV_LOCAL"
+validate_env_local
 load_env_local
 warn_local_database_url
 export DATABASE_URL
