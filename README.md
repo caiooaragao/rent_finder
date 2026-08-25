@@ -352,7 +352,7 @@ npm run build   # build de produção Next.js
 
 ### Deploy no servidor
 
-1. Configure `DATABASE_URL` no ambiente da app (`.env.local` ou variáveis do process manager).
+1. Após `git pull`, confirme `rent_finder_front/.env.local` no servidor com a `DATABASE_URL` do **Supabase Cloud** (não use `127.0.0.1`).
 2. `npm run db:migrate` e `npm run build` / `npm run dev` (ou PM2/systemd para produção).
 
 ### Deploy completo (um comando)

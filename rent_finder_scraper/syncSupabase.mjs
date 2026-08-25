@@ -281,6 +281,19 @@ export async function truncateAnuncios(sql) {
 // ---------------------------------------------------------------------------
 
 /**
+ * @param {string} databaseUrl
+ * @returns {import('postgres').Options<{}>}
+ */
+function getPostgresOptions(databaseUrl) {
+  const isLocal = /localhost|127\.0\.0\.1/.test(databaseUrl);
+  return {
+    prepare: false,
+    max: 1,
+    ...(isLocal ? {} : { ssl: "require" }),
+  };
+}
+
+/**
  * Abre uma conexão Postgres reutilizável.
  * Feche com `closeDbConnection(sql)` ao final.
  *
@@ -289,7 +302,7 @@ export async function truncateAnuncios(sql) {
  */
 export async function openDbConnection(databaseUrl) {
   const postgres = await loadPostgres();
-  return postgres(databaseUrl, { prepare: false, max: 1 });
+  return postgres(databaseUrl, getPostgresOptions(databaseUrl));
 }
 
 /**

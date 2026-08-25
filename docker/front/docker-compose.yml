@@ -13,4 +13,5 @@ services:
       - ../../rent_finder_front/.env.local
     environment:
       PORT: ${FRONT_PORT:-5000}
+      DATABASE_URL: ${DATABASE_URL:-}
     restart: unless-stopped

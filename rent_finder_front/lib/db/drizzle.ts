@@ -1,5 +1,6 @@
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { getPostgresOptions } from "./postgresOptions";
 import * as schema from "./schema";
 
 const globalForDb = globalThis as unknown as {
@@ -17,12 +18,7 @@ export function getSql(): ReturnType<typeof postgres> {
   if (!url) {
     throw new Error("DATABASE_URL environment variable is not set");
   }
-  const sql = postgres(url, {
-    prepare: false,
-    max: 1,
-    idle_timeout: 20,
-    connect_timeout: 20,
-  });
+  const sql = postgres(url, getPostgresOptions(url));
   globalForDb.postgresClient = sql;
   return sql;
 }

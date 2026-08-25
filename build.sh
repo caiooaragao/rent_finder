@@ -59,6 +59,19 @@ done
 log() { printf '\n==> %s\n' "$*"; }
 die() { printf 'Erro: %s\n' "$*" >&2; exit 1; }
 
+load_env_local() {
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_LOCAL"
+  set +a
+}
+
+warn_local_database_url() {
+  if [[ "${DATABASE_URL:-}" == *127.0.0.1* || "${DATABASE_URL:-}" == *localhost* ]]; then
+    log "AVISO: DATABASE_URL aponta para localhost — em deploy use o Supabase Cloud."
+  fi
+}
+
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "'$1' não encontrado no PATH."
 }
@@ -359,11 +372,14 @@ start_front_docker() {
   rm -f "$FRONT_PID_FILE"
 
   log "A construir imagem e iniciar front em Docker (porta $FRONT_PORT)..."
+  load_env_local
+  export DATABASE_URL
   (
     cd "$FRONT_DOCKER_DIR"
     FRONT_PORT="$FRONT_PORT" \
     FRONT_CONTAINER_NAME="$FRONT_CONTAINER_NAME" \
     FRONT_IMAGE_NAME="$FRONT_IMAGE_NAME" \
+    DATABASE_URL="$DATABASE_URL" \
       docker compose up -d --build --force-recreate --remove-orphans
   )
 
@@ -388,23 +404,28 @@ start_front_docker() {
 
 start_front_background() {
   local mode="$1"
-  local cmd
 
   mkdir -p "$RUN_DIR"
   free_front_port
   rm -f "$FRONT_PID_FILE"
 
   if [[ "$mode" == "dev" ]]; then
-    cmd=(npm run dev)
     log "A iniciar servidor de desenvolvimento em background (porta $FRONT_PORT)..."
   else
-    cmd=(npm run start --prefix "$FRONT_DIR")
     log "A iniciar servidor de produção em background (porta $FRONT_PORT)..."
   fi
 
   : >"$FRONT_LOG_FILE"
-  nohup "${cmd[@]}" >>"$FRONT_LOG_FILE" 2>&1 &
-  echo $! >"$FRONT_PID_FILE"
+  (
+    cd "$FRONT_DIR"
+    load_env_local
+    if [[ "$mode" == "dev" ]]; then
+      nohup npm run dev >>"$FRONT_LOG_FILE" 2>&1 &
+    else
+      nohup npm run start >>"$FRONT_LOG_FILE" 2>&1 &
+    fi
+    echo $! >"$FRONT_PID_FILE"
+  )
 
   for _ in $(seq 1 30); do
     if grep -qE 'Ready|started server|Local:' "$FRONT_LOG_FILE" 2>/dev/null; then
@@ -454,6 +475,9 @@ fi
 # --- DATABASE_URL ---
 [[ -f "$ENV_LOCAL" ]] || die "Ficheiro em falta: $ENV_LOCAL — copie rent_finder_front/.env.example e defina DATABASE_URL (Supabase Cloud)."
 grep -q '^DATABASE_URL=.\+' "$ENV_LOCAL" || die "DATABASE_URL vazio em $ENV_LOCAL"
+load_env_local
+warn_local_database_url
+export DATABASE_URL
 
 # --- Migrações ---
 if [[ "$SKIP_MIGRATE" == false ]]; then
@@ -475,6 +499,8 @@ if [[ "$DO_DEV" == true ]]; then
   if [[ "$FOREGROUND" == true ]]; then
     free_front_port
     log "A iniciar servidor de desenvolvimento (porta $FRONT_PORT)..."
+    cd "$FRONT_DIR"
+    load_env_local
     exec npm run dev
   fi
   start_front_background dev
@@ -493,7 +519,9 @@ if [[ "$DO_START" == true ]]; then
   if [[ "$FOREGROUND" == true ]]; then
     free_front_port
     log "A iniciar servidor de produção (porta $FRONT_PORT)..."
-    exec npm run start --prefix "$FRONT_DIR"
+    cd "$FRONT_DIR"
+    load_env_local
+    exec npm run start
   fi
   start_front_background start
   exit 0
