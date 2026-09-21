@@ -13,8 +13,7 @@ import { listingPassesPriceRange } from "@/lib/listingPriceRange";
 import { groupCoincidentOlxPoints } from "@/lib/groupCoincidentOlxPoints";
 import type { OlxListing } from "@/types/olx";
 import OlxSuperclusterLayer, { type OlxMapPoint } from "./OlxSuperclusterLayer";
-import SearchHoveredBairroPolygon from "./SearchHoveredBairroPolygon";
-import SelectedSearchPlacePolygon from "./SelectedSearchPlacePolygon";
+import SearchPlacePolygonLayer from "./SearchPlacePolygonLayer";
 import type { SearchHoveredPlaceLocation } from "./SearchHoveredBairroPolygon";
 import { useTheme as useNextTheme } from "next-themes";
 import type { MapBasemap } from "@/lib/mapBasemap";
@@ -68,6 +67,12 @@ const DEFAULT_CENTER: LatLngExpression = [-8.0476, -34.877];
  * Último zoom nativo CARTO (`light_all` / `dark_all`). Acima disso o Leaflet faz overzoom.
  */
 const CARTO_RASTER_MAX_ZOOM = 18 as const;
+const CARTO_API_KEY = process.env.NEXT_PUBLIC_CARTO_API_KEY ?? "";
+
+function cartoRasterTileUrl(style: "light_all" | "dark_all"): string {
+  const base = `https://{s}.basemaps.cartocdn.com/${style}/{z}/{x}/{y}{r}.png`;
+  return CARTO_API_KEY ? `${base}?key=${CARTO_API_KEY}` : base;
+}
 
 /** Esri World Imagery — satélite sem chave; usa ordem de tile z/y/x do serviço ArcGIS. */
 const SATELLITE_MAX_ZOOM = 19 as const;
@@ -166,8 +171,8 @@ export default function LeafletMapInner({
 
   const cartoTileUrl =
     colorModeResolved === "dark"
-      ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-      : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+      ? cartoRasterTileUrl("dark_all")
+      : cartoRasterTileUrl("light_all");
 
   /** Pins do mapa: só filtro de preço; texto/lugar na busca não escondem outros anúncios. */
   const olxPoints = React.useMemo<OlxMapPoint[]>(() => {
@@ -257,9 +262,9 @@ export default function LeafletMapInner({
           hoverPopupsEnabled={hoverPopupsEnabled}
         />
 
-        <SearchHoveredBairroPolygon location={searchHoveredBairro} />
-        <SelectedSearchPlacePolygon
-          selection={searchPlacePin}
+        <SearchPlacePolygonLayer
+          selected={searchPlacePin}
+          hovered={searchHoveredBairro}
           listings={listings}
         />
 

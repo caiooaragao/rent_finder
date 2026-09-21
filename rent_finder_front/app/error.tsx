@@ -14,6 +14,7 @@ export default function ErrorPage({
   }, [error]);
 
   const msg = error.message ?? "";
+  const opaqueProduction = /omitted in production builds/i.test(msg);
   const likelyDb =
     /DATABASE_URL|postgres|password authentication|ECONNREFUSED|timeout|SSL/i.test(
       msg,
@@ -31,7 +32,14 @@ export default function ErrorPage({
       <h1 style={{ fontSize: "1.35rem", marginBottom: "1rem" }}>
         Erro ao carregar a página
       </h1>
-      {likelyDb ? (
+      {opaqueProduction ? (
+        <p style={{ marginBottom: "1rem" }}>
+          Não foi possível renderizar a página. Atualiza para tentar outra vez.
+          Se persistir, confirma a ligação à base de dados (
+          <code>DATABASE_URL</code> no pooler do Supabase, porta{" "}
+          <code>6543</code>).
+        </p>
+      ) : likelyDb ? (
         <p style={{ marginBottom: "1rem" }}>
           Falha ao ligar à base de dados. Confirma{" "}
           <code>DATABASE_URL</code> no Supabase Cloud (pooler transaction, porta{" "}

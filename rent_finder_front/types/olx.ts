@@ -2,7 +2,8 @@ export interface OlxListing {
   titulo: string;
   preco: string;
   link: string;
-  descricao: string;
+  /** Texto completo do anúncio — omitido no payload do mapa (demasiado grande). */
+  descricao?: string;
   endereco: string;
   /** Scraper: true quando o endereço parece ser só bairro/localidade + cidade + UF + CEP (sem rua) */
   enderecoApenasBairro?: boolean;

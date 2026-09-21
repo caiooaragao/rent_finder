@@ -54,6 +54,7 @@ loadEnvFile(join(__dirname, "../rent_finder_front/.env.local"), {
  */
 
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { promisify } from "node:util";
 
@@ -79,9 +80,15 @@ const RESEARCH_ARRAY = [
 
 const DEFAULT_OUT = "olx-scrape.json";
 const DEFAULT_BATCH_SIZE = 1000;
-const DEFAULT_CONCURRENCY = 5;
+const DEFAULT_CONCURRENCY = 3;
+const DEFAULT_FETCH_RETRIES = 4;
+const DEFAULT_RETRY_DELAY_MS = 2000;
+const LISTING_PAGE_DELAY_MS = 1200;
+const DETAIL_REQUEST_DELAY_MS = 400;
 
 const CURL_MAX_BUFFER = 15 * 1024 * 1024;
+const COOKIE_JAR = join(__dirname, ".olx-curl-cookies.txt");
+const CURL_BIN = process.platform === "win32" ? "curl.exe" : "curl";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -280,7 +287,12 @@ function extractAds(html) {
   }
   const ads = [];
   for (let i = 0; i < n; i++) {
-    ads.push({ titulo: titulos[i], preco: precos[i], link: links[i] });
+    if (!isScrapeableUrl(links[i])) continue;
+    ads.push({
+      titulo: titulos[i],
+      preco: precos[i],
+      link: canonicalAdLink(links[i]),
+    });
   }
   return ads;
 }
@@ -290,17 +302,22 @@ function readListingMeta(html) {
   const block = html.match(
     /<script id="__NEXT_DATA__"[^>]*>([^<]+)<\/script>/
   );
-  if (!block) return { totalOfAds: 0, pageSize: 50 };
-  try {
-    const j = JSON.parse(block[1]);
-    const pp = j?.props?.pageProps;
-    return {
-      totalOfAds: Number(pp?.totalOfAds) || 0,
-      pageSize: Number(pp?.pageSize) || 50,
-    };
-  } catch {
-    return { totalOfAds: 0, pageSize: 50 };
+  if (block) {
+    try {
+      const j = JSON.parse(block[1]);
+      const pp = j?.props?.pageProps;
+      return {
+        totalOfAds: Number(pp?.totalOfAds) || 0,
+        pageSize: Number(pp?.pageSize) || 50,
+      };
+    } catch {
+      // OLX pode não enviar __NEXT_DATA__; usa fallback abaixo.
+    }
   }
+  const totalM = html.match(/"totalOfAds"\s*:\s*(\d+)/);
+  const totalOfAds = totalM ? Number(totalM[1]) : 0;
+  const pageSize = extractAds(html).length || 50;
+  return { totalOfAds, pageSize };
 }
 
 function buildPageUrl(base, page) {
@@ -311,6 +328,29 @@ function buildPageUrl(base, page) {
 }
 
 const OLX_ORIGIN = "https://www.olx.com.br";
+
+/** @param {string} raw */
+function isScrapeableUrl(raw) {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  if (!s || s === "#" || s.startsWith("javascript:")) return false;
+  try {
+    const u = new URL(s, OLX_ORIGIN);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function buildCurlArgs(url) {
+  const args = ["-sL", "-A", UA, "--max-time", "90"];
+  if (existsSync(COOKIE_JAR)) {
+    args.push("-b", COOKIE_JAR, "-c", COOKIE_JAR);
+  }
+  const proxy = process.env.OLX_SCRAPE_PROXY?.trim();
+  if (proxy) args.push("-x", proxy);
+  args.push(url);
+  return args;
+}
 
 /**
  * Mesmo anúncio em pesquisas diferentes costuma ter o mesmo path; query/hash variam.
@@ -339,8 +379,7 @@ function hasListingMarkup(html) {
     typeof html === "string" &&
     html.includes("olx-adcard__title") &&
     html.includes("olx-adcard__price") &&
-    html.includes("olx-adcard__link") &&
-    html.includes("__NEXT_DATA__")
+    html.includes("olx-adcard__link")
   );
 }
 
@@ -354,11 +393,10 @@ function hasAdMarkup(html) {
 }
 
 async function fetchHtmlViaCurl(url) {
-  const { stdout } = await execFileAsync(
-    "curl",
-    ["-sL", "-A", UA, "--max-time", "90", url],
-    { maxBuffer: CURL_MAX_BUFFER, encoding: "utf8" }
-  );
+  const { stdout } = await execFileAsync(CURL_BIN, buildCurlArgs(url), {
+    maxBuffer: CURL_MAX_BUFFER,
+    encoding: "utf8",
+  });
   return stdout;
 }
 
@@ -396,7 +434,7 @@ async function geocodeEnderecoViaCurl(singleLine) {
   let stdout;
   try {
     const out = await execFileAsync(
-      "curl",
+      CURL_BIN,
       ["-sS", "-L", "-A", UA, "--max-time", "45", u.toString()],
       { maxBuffer: 2 * 1024 * 1024, encoding: "utf8" }
     );
@@ -441,24 +479,38 @@ async function geocodeEnderecoViaCurl(singleLine) {
 }
 
 /**
- * Busca HTML via curl diretamente, sem passar pelo fetch() do Node.
- * Preferido para páginas de anúncio OLX (Cloudflare sempre bloqueia fetch nativo).
+ * Busca HTML via curl com retentativas e backoff (Cloudflare / rate limit).
  *
  * @param {string} url
  * @param {(html: string) => boolean} isValid
+ * @param {{ retries?: number; retryDelayMs?: number }} [opts]
  */
-async function fetchHtmlCurlOnly(url, isValid) {
-  let text;
-  try {
-    text = await fetchHtmlViaCurl(url);
-  } catch (e) {
-    const hint = e && e.message ? `: ${e.message}` : "";
-    throw new Error(`curl failed for ${url}${hint}`);
+async function fetchHtmlCurlOnly(url, isValid, opts = {}) {
+  const retries = opts.retries ?? DEFAULT_FETCH_RETRIES;
+  const retryDelayMs = opts.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+
+  if (!isScrapeableUrl(url)) {
+    throw new Error(`URL inválida: ${url}`);
   }
-  if (isValid(text)) return text;
-  throw new Error(
-    `Could not load valid HTML for ${url} (blocked or layout changed).`
-  );
+
+  /** @type {Error | undefined} */
+  let lastErr;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const text = await fetchHtmlViaCurl(url);
+      if (isValid(text)) return text;
+      lastErr = new Error(
+        `Could not load valid HTML for ${url} (blocked or layout changed).`
+      );
+    } catch (e) {
+      const hint = e && e.message ? `: ${e.message}` : "";
+      lastErr = new Error(`curl failed for ${url}${hint}`);
+    }
+    if (attempt < retries) {
+      await sleep(retryDelayMs * attempt);
+    }
+  }
+  throw lastErr ?? new Error(`Could not load valid HTML for ${url}`);
 }
 
 /**
@@ -531,8 +583,8 @@ async function collectListingAdsForSearchUrl(url, maxPages, searchIndex, searchT
     if (page > 1 && pageAds.length === 0) break;
     ads.push(...pageAds);
 
-    // Pequeno delay entre páginas da mesma URL (polidez com o servidor OLX).
-    if (page < pageLimit) await sleep(300);
+    // Delay entre páginas — reduz bloqueio Cloudflare na paginação.
+    if (page < pageLimit) await sleep(LISTING_PAGE_DELAY_MS);
   }
 
   console.error(
@@ -636,6 +688,12 @@ async function enrichBatchWithDetails(batch, globalOffset, detailMax, concurrenc
       return;
     }
 
+    if (!isScrapeableUrl(ad.link)) {
+      ad.descricao = "";
+      ad.endereco = "";
+      return;
+    }
+
     try {
       // curl diretamente — evita o pool de conexões do fetch/undici que acumula
       // memória sob alta concorrência (OLX bloqueia fetch via Cloudflare de qualquer forma).
@@ -648,6 +706,7 @@ async function enrichBatchWithDetails(batch, globalOffset, detailMax, concurrenc
       ad.endereco = "";
       console.error(`  [detalhe] falhou (${ad.link}): ${e.message || e}`);
     }
+    await sleep(DETAIL_REQUEST_DELAY_MS);
   }, concurrency);
 }
 

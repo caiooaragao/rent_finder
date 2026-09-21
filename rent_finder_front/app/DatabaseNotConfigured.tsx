@@ -38,3 +38,25 @@ export default function DatabaseNotConfigured() {
     </main>
   );
 }
+
+/** Mostrado quando a query de anúncios falha (timeout, payload, ligação). */
+export function DatabaseLoadFailed() {
+  return (
+    <main
+      style={{
+        padding: "2.5rem 1.5rem",
+        maxWidth: "36rem",
+        margin: "0 auto",
+        lineHeight: 1.6,
+      }}
+    >
+      <h1 style={{ fontSize: "1.35rem", marginBottom: "1rem" }}>
+        Não foi possível carregar os anúncios
+      </h1>
+      <p style={{ marginBottom: "1rem", color: "var(--foreground-muted, #666)" }}>
+        A consulta à base de dados falhou ou demorou demasiado. Atualiza a
+        página para tentar outra vez.
+      </p>
+    </main>
+  );
+}

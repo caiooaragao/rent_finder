@@ -58,6 +58,10 @@ const brlShort = new Intl.NumberFormat("pt-BR", {
   maximumFractionDigits: 0,
 });
 
+function norm(s: string) {
+  return s.trim().toLowerCase();
+}
+
 interface HomeScreenProps {
   listings: OlxListing[];
 }
@@ -136,12 +140,18 @@ const HomeScreen = ({ listings }: HomeScreenProps) => {
 
   const handleScopeChange = React.useCallback((s: ListingSearchScope) => {
     setSearchScope(s);
-    setPlacePin(null);
+    setPlacePin((prev) => {
+      if (!prev) return null;
+      if (s === "tudo") return prev;
+      if (s === "bairro" && prev.kind === "bairro") return prev;
+      if (s === "cidade" && prev.kind === "cidade") return prev;
+      return null;
+    });
   }, []);
 
   const handleSelectSuggestion = React.useCallback((o: SearchBarOption) => {
-    setSearchHoveredPlace(null);
     if (isListingSearchOption(o)) {
+      setSearchHoveredPlace(null);
       selectedPlaceQueryRef.current = null;
       setPlacePin(null);
       setFlyTo({ stableId: `olx-${o.index}`, token: Date.now() });
@@ -192,7 +202,12 @@ const HomeScreen = ({ listings }: HomeScreenProps) => {
       }
 
       if (expected !== null) selectedPlaceQueryRef.current = null;
-      setPlacePin(null);
+      setPlacePin((prev) => {
+        if (!prev) return null;
+        if (prev.kind === "bairro" && norm(ni) === norm(prev.bairro)) return prev;
+        if (prev.kind === "cidade" && norm(ni) === norm(prev.cidade)) return prev;
+        return null;
+      });
     },
     [],
   );
